@@ -1,6 +1,6 @@
-/* Shelf Shift — procedural WebAudio: original short transients per logical
- * event, layered material knocks, quiet ambience, adaptive music pad.
- * No audio assets; everything is synthesized. Browser global: SSAudio.
+/* Shelf Shift — WebAudio: authored one-shot samples in sfx/ per logical
+ * event, with synthesized transients as fallback, layered material knocks,
+ * quiet ambience, adaptive music pad. Browser global: SSAudio.
  */
 (function (root) {
   'use strict';
@@ -13,6 +13,7 @@
   var started = false;
   var musicTimer = null, ambienceNodes = null;
   var avRng = null; // seeded variants for replay consistency
+  var sampleCache = {}; // basename -> { buffer } | { loading: true } | { failed: true }
 
   function ensureCtx() {
     if (ctx) return true;
@@ -80,37 +81,79 @@
   // ---------- event map ----------
   var SFX = {
     'ui':        function () { blip(660, 0.06, 'triangle', 0.12); },
-    'select':    function () { blip(variant(520), 0.09, 'sine', 0.18); blip(variant(780), 0.07, 'sine', 0.08, 'effects', ctx.currentTime + 0.03); caption('select'); },
+    'select':    function () { blip(variant(520), 0.09, 'sine', 0.18); blip(variant(780), 0.07, 'sine', 0.08, 'effects', ctx.currentTime + 0.03); },
     'deselect':  function () { blip(390, 0.07, 'sine', 0.1); },
-    'place':     function () { knock(0.09, 0.5, 900); blip(variant(240), 0.08, 'sine', 0.12); caption('place'); },
-    'invalid':   function () { blip(160, 0.16, 'square', 0.07); blip(150, 0.14, 'square', 0.05, 'effects', ctx.currentTime + 0.05); caption('not allowed'); },
-    'delivery':  function () { knock(0.07, 0.3, 1400); blip(variant(880), 0.05, 'triangle', 0.06, 'effects', ctx.currentTime + 0.02); caption('delivery'); },
+    'place':     function () { knock(0.09, 0.5, 900); blip(variant(240), 0.08, 'sine', 0.12); },
+    'invalid':   function () { blip(160, 0.16, 'square', 0.07); blip(150, 0.14, 'square', 0.05, 'effects', ctx.currentTime + 0.05); },
+    'delivery':  function () { knock(0.07, 0.3, 1400); blip(variant(880), 0.05, 'triangle', 0.06, 'effects', ctx.currentTime + 0.02); },
     'clear':     function () {
       var base = 620;
       [0, 4, 7].forEach(function (st, i) {
         blip(variant(base * Math.pow(2, st / 12)), 0.22, 'sine', 0.14, 'effects', ctx.currentTime + i * 0.05);
       });
       knock(0.06, 0.25, 2000, ctx.currentTime);
-      caption('triple cleared');
     },
-    'order':     function () { blip(523, 0.3, 'sine', 0.14); blip(784, 0.35, 'sine', 0.12, 'effects', ctx.currentTime + 0.12); caption('order complete'); },
+    'order':     function () { blip(523, 0.3, 'sine', 0.14); blip(784, 0.35, 'sine', 0.12, 'effects', ctx.currentTime + 0.12); },
     'win':       function () {
       [0, 4, 7, 12].forEach(function (st, i) {
         blip(523 * Math.pow(2, st / 12), 0.5, 'triangle', 0.14, 'effects', ctx.currentTime + i * 0.12);
       });
-      caption('stage complete');
     },
-    'lose':      function () { blip(300, 0.5, 'sine', 0.16, 'effects', ctx.currentTime, 180); blip(200, 0.6, 'sine', 0.1, 'effects', ctx.currentTime + 0.15, 120); caption('round lost'); },
-    'undo':      function () { blip(500, 0.08, 'triangle', 0.1, 'effects', ctx.currentTime, 380); caption('undo'); },
-    'hint':      function () { blip(990, 0.12, 'sine', 0.1); blip(1320, 0.14, 'sine', 0.07, 'effects', ctx.currentTime + 0.07); caption('hint'); },
+    'lose':      function () { blip(300, 0.5, 'sine', 0.16, 'effects', ctx.currentTime, 180); blip(200, 0.6, 'sine', 0.1, 'effects', ctx.currentTime + 0.15, 120); },
+    'undo':      function () { blip(500, 0.08, 'triangle', 0.1, 'effects', ctx.currentTime, 380); },
+    'hint':      function () { blip(990, 0.12, 'sine', 0.1); blip(1320, 0.14, 'sine', 0.07, 'effects', ctx.currentTime + 0.07); },
     'star':      function () { blip(1568, 0.18, 'sine', 0.1); }
   };
+
+  var CAPTIONS = {
+    'select': 'select', 'place': 'place', 'invalid': 'not allowed',
+    'delivery': 'delivery', 'clear': 'triple cleared', 'order': 'order complete',
+    'win': 'stage complete', 'lose': 'round lost', 'undo': 'undo', 'hint': 'hint'
+  };
+
+  // ---------- authored samples: lazy-fetch sfx/<name>.opus per event ----------
+  // Synthesis above stays the fallback while a sample loads or if it fails.
+  var SAMPLES = {
+    'ui': 'ui-tick', 'select': 'item-pickup', 'deselect': 'item-putback',
+    'place': 'shelf-thud', 'invalid': 'move-denied', 'delivery': 'parcel-drop',
+    'clear': 'triple-chime', 'order': 'order-bell', 'win': 'round-fanfare',
+    'lose': 'round-deflate', 'undo': 'undo-swoosh', 'hint': 'hint-sparkle',
+    'star': 'star-glint'
+  };
+
+  function playSample(name) {
+    var base = SAMPLES[name];
+    if (!base || !ctx) return false;
+    var entry = sampleCache[base];
+    if (entry && entry.buffer) {
+      var src = ctx.createBufferSource();
+      src.buffer = entry.buffer;
+      src.connect(buses.effects); // effects bus applies mute/volume settings
+      src.start();
+      return true;
+    }
+    if (!entry) { // lazy: first request starts fetch/decode, synth covers this play
+      sampleCache[base] = { loading: true };
+      fetch('sfx/' + base + '.opus')
+        .then(function (res) {
+          if (!res.ok) throw new Error('sfx http ' + res.status);
+          return res.arrayBuffer();
+        })
+        .then(function (data) { return ctx.decodeAudioData(data); })
+        .then(function (buf) { sampleCache[base] = { buffer: buf }; })
+        .catch(function () { sampleCache[base] = { failed: true }; });
+    }
+    return false;
+  }
 
   function play(name) {
     if (!started || !ctx || settings.muted) return;
     if (ctx.state === 'suspended') ctx.resume();
-    var fn = SFX[name];
-    if (fn) fn();
+    if (!playSample(name)) {
+      var fn = SFX[name];
+      if (fn) fn();
+    }
+    caption(CAPTIONS[name]);
   }
 
   // ---------- ambience: warm room tone (filtered noise, very quiet) ----------

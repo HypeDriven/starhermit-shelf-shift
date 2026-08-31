@@ -1,0 +1,80 @@
+[
+  {
+    "name": "ui-tick",
+    "seconds": 1,
+    "prompt": "Short soft wooden tick of a small boutique counter button being pressed, dry and quiet, no reverb.",
+    "event": "ui"
+  },
+  {
+    "name": "item-pickup",
+    "seconds": 1,
+    "prompt": "Light ceramic trinket being lifted off a wooden shelf, gentle clink with a faint scrape.",
+    "event": "select"
+  },
+  {
+    "name": "item-putback",
+    "seconds": 1,
+    "prompt": "Small glass object set back down softly on a wooden shelf, single muted tap.",
+    "event": "deselect"
+  },
+  {
+    "name": "shelf-thud",
+    "seconds": 1,
+    "prompt": "Solid wooden thud of a small box placed firmly onto a boutique shelf, warm low knock.",
+    "event": "place"
+  },
+  {
+    "name": "move-denied",
+    "seconds": 1,
+    "prompt": "Dull double knock of knuckles on a hollow wooden crate, disapproving and flat.",
+    "event": "invalid"
+  },
+  {
+    "name": "parcel-drop",
+    "seconds": 1,
+    "prompt": "Small paper parcel landing on a shop counter, soft cardboard tap with a paper rustle.",
+    "event": "delivery"
+  },
+  {
+    "name": "triple-chime",
+    "seconds": 2,
+    "prompt": "Bright three-note glass chime arpeggio rising, as three matching trinkets sparkle away.",
+    "event": "clear"
+  },
+  {
+    "name": "order-bell",
+    "seconds": 2,
+    "prompt": "Cheerful brass counter service bell rung twice, clear ringing ding with short sustain.",
+    "event": "order"
+  },
+  {
+    "name": "round-fanfare",
+    "seconds": 3,
+    "prompt": "Warm triumphant boutique jingle, rising bell arpeggio ending with a soft wooden clap and shimmer.",
+    "event": "win"
+  },
+  {
+    "name": "round-deflate",
+    "seconds": 2,
+    "prompt": "Gentle comedic descending slide whistle falling in pitch, a soft sad deflating tone.",
+    "event": "lose"
+  },
+  {
+    "name": "undo-swoosh",
+    "seconds": 1,
+    "prompt": "Quick reverse whoosh of a small object sliding back along a wooden shelf, airy and short.",
+    "event": "undo"
+  },
+  {
+    "name": "hint-sparkle",
+    "seconds": 1,
+    "prompt": "Delicate magical sparkle shimmer of tiny twinkling bells, light and curious.",
+    "event": "hint"
+  },
+  {
+    "name": "star-glint",
+    "seconds": 1,
+    "prompt": "Single bright crystalline ping of a star gem glinting, high clear bell with fast decay.",
+    "event": "star"
+  }
+]
