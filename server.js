@@ -46,6 +46,13 @@ function saveBoards(b) {
 
 // ---------- validation ----------
 const MAX_BODY = 256 * 1024;
+// Real-time floor per committed move. Client clocks are untrusted off-line,
+// so a verified time-limited round is only ever accepted if its total reported
+// play time is at least this many ms per move actually played. A near-zero
+// claim (the "fabricated atMs" cheat) therefore can no longer dodge a time
+// limit or inflate a time bonus. A genuine human move on this UI takes well
+// over 100 ms, so this never rejects real play.
+const MIN_MS_PER_MOVE = 100;
 const rate = new Map(); // ip -> {count, resetAt}
 function rateLimited(ip) {
   const now = Date.now();
@@ -95,15 +102,26 @@ function verifySubmission(entry) {
   let state;
   try { state = Rules.createGame(cfg); } catch (e) { return { ok: false, error: 'bad cfg' }; }
   const seen = new Set();
+  const invalidActions = [];
+  let prevAtMs = -1;
+  let validMoves = 0;
   for (const cmd of entry.log) {
     if (Rules.validateCommandShape(cmd)) return { ok: false, error: 'malformed command' };
     if (cmd.id) { // duplicate commands rejected idempotently
       if (seen.has(cmd.id)) continue;
       seen.add(cmd.id);
     }
+    // Client clocks are untrusted: the elapsed time must be monotonic and
+    // non-negative per command, otherwise the reported timing is fabricated.
+    if (cmd.type === 'move' && typeof cmd.atMs === 'number' && isFinite(cmd.atMs)) {
+      const at = Math.floor(cmd.atMs / 100) * 100;
+      if (at < 0 || at < prevAtMs) return { ok: false, error: 'implausible time' };
+      prevAtMs = at;
+    }
     const res = Rules.applyCommand(state, cmd);
-    if (!res.ok) return { ok: false, error: 'illegal command in log' };
+    if (!res.ok) { invalidActions.push(cmd); continue; } // invalid actions are reconstructed, not trusted
     state = res.state;
+    if (cmd.type === 'move') validMoves++;
   }
   if (!state.terminal) return { ok: false, error: 'log does not reach a terminal state' };
   if (state.score.total !== entry.score) return { ok: false, error: 'score mismatch' };
@@ -111,6 +129,16 @@ function verifySubmission(entry) {
   if (entry.board.startsWith('daily-') || entry.board.startsWith('challenge-')) {
     if (!state.terminal.won) return { ok: false, error: 'round not won' };
   }
+  // Authoritative timing: recompute from the replayed engine state. Where a
+  // round is timed, reject a claimed play time implausibly fast for real play;
+  // the client clock is only ever a verified lower bound, never a way to win
+  // a time limit or harvest a time bonus.
+  const timed = (cfg.timeLimitSec > 0) || (cfg.par && cfg.par.timeSec > 0);
+  if (timed && validMoves > 0 && state.elapsedMs < validMoves * MIN_MS_PER_MOVE) {
+    return { ok: false, error: 'implausible time' };
+  }
+  entry.invalid = invalidActions.length; // authoritative, reconstructed from the log
+  entry.durationMs = state.elapsedMs;    // authoritative elapsed time
   return { ok: true, verified: true };
 }
 

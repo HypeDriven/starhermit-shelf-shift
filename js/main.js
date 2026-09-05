@@ -408,7 +408,15 @@ function commitMove(from, to) {
   const shapeErr = Rules.validateCommandShape(cmd);
   if (shapeErr) { invalidFeedback(shapeErr); return; }
   const res = Rules.applyCommand(s, cmd);
-  if (!res.ok) { invalidFeedback(res.reason); return; }
+  if (!res.ok) {
+    // Record the rejected attempt in the authoritative input log so the server
+    // replay reconstructs the invalid-action count itself instead of trusting
+    // the client-supplied scalar (the rejected command changes no state, so it
+    // is safe to retain; the server counts and skips it).
+    session.log.push(cmd);
+    invalidFeedback(res.reason);
+    return;
+  }
 
   // undo snapshot (state before the move)
   session.undoStack.push({ json: Rules.serialize(s), logLen: session.log.length, elapsedMs: session.elapsedMs });
@@ -611,8 +619,9 @@ function verifyEntry(entry) {
   try {
     let state = Rules.createGame(entry.cfgSnapshot);
     for (const cmd of entry.log) {
+      if (Rules.validateCommandShape(cmd)) return false;
       const res = Rules.applyCommand(state, cmd);
-      if (!res.ok) return false;
+      if (!res.ok) continue; // invalid action: skipped, reconstructed as the count
       state = res.state;
     }
     return Rules.hashState(state) === entry.finalHash && state.score.total === entry.score;

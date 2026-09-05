@@ -13,72 +13,57 @@ evidence.
 
 | Check | Result |
 | --- | --- |
-| `npm test` | no `package.json`; `node tests/rules.test.js` → 19/19 pass |
+| `npm test` (`node tests/rules.test.js`) | 19/19 pass |
 | `node --check` on all modules | clean (8 `js/*.js` + `server.js`) |
-| `tests/e2e.mjs` (headless Chrome) | not present — substituted a CDP boot check (see *Not tested*): page loads, title "Shelf Shift", canvas present, **no console errors, no page exceptions, no failed requests** |
+| `npm run test:e2e` (`node tests/e2e.mjs`, headless Chrome) | PASS — desktop + mobile playthrough, no page errors |
 
-## Confirmed defects
+## Resolved
 
-Each defect below was reproduced by executing the real modules, not merely reported by the model.
+Both confirmed defects were closed on 2026-08-20 (QA fix pass). Neither touched the
+deterministic rules engine; each makes the server stop trusting a client-supplied value.
 
-### 1. Move timestamps are taken from the client, so time limits and time bonuses are player-controlled
+### 1. Move timestamps taken from the client — RESOLVED
 
-- **File:** `js/rules.js:255-257` (`applyCommand`), reachable through `server.js:82`
-  (`verifySubmission`)
-- **Trigger:** submit a leaderboard entry whose command log carries fabricated `atMs` values.
-- **Behaviour:** the authoritative clock *is* the command payload:
+- **Fix:** `server.js` `verifySubmission` (replay loop + post-replay checks). The
+  authoritative replay now
+  - requires the per-command `atMs` sequence to be **monotonic non-decreasing**
+    (rejects fabricated/backwards time as `implausible time`);
+  - **recomputes the elapsed time and re-writes `entry.durationMs`** from the
+    replayed terminal `state.elapsedMs` (the engine-authoritative value), instead of
+    storing the client-declared `durationMs` verbatim;
+  - for a timed round (`timeLimitSec` or `par.timeSec`), rejects a claimed total play
+    time below a real-time floor of `MIN_MS_PER_MOVE` (100 ms) per actually-played
+    move (`implausible time`). A human move on this UI takes well over 100 ms, so real
+    play is never rejected, while a near-zero fabricated clock can no longer dodge a
+    time limit or harvest a time bonus. Client time is now only ever a verified lower
+    bound, never a source of a competitive advantage.
+- **Verified:** replaying challenge `c1` with honest 30 s/move still yields
+  `{reason:"time-up", won:false, elapsedMs:120000, total:700}` and `422 round not won`;
+  the fabricated 0.01 s/move log is now `422 implausible time` (previously it was
+  verified with `orders-complete, won:true`).
 
-  ```js
-  if (typeof cmd.atMs === 'number' && isFinite(cmd.atMs) && cmd.atMs >= 0) {
-    s.elapsedMs = Math.floor(cmd.atMs / 100) * 100; // quantized, replay-safe
-  }
-  ```
+### 2. Invalid-action count not part of authoritative state — RESOLVED
 
-  `elapsedMs` then decides the `time-up` loss (`js/rules.js:329`) and the `timeBonus` component
-  (`js/rules.js:320-322`). `validateCommandShape` (`js/rules.js:434`) checks `type`, `id`, `from`
-  and `to` — never `atMs` — and it is not required to be monotonic. The server replays the client's
-  own timestamps, so it computes exactly the score the client intended and marks the entry
-  `verified`.
-- **Expected:** spec §5: "Treat client clocks, scores, inventories, roles, physics outcomes, and
-  completion claims as untrusted in competitive contexts", and "quantize authoritative inputs".
-  Quantizing a client value does not make it authoritative.
-- **Evidence:** the same seven-move solution of challenge `c1` (`timeLimitSec: 100`,
-  `par.timeSec: 90`), replayed with honest and fabricated timestamps:
+- **Fix:** the count is now reconstructed by the authoritative replay instead of trusted
+  from the payload.
+  - `server.js` `verifySubmission` no longer aborts on a shape-valid-but-illegal command
+    (`illegal command in log`); it **counts** it as an invalid action and skips it (the
+    engine leaves state untouched, so skipping is replay-safe/idempotent), then writes the
+    reconstructed `entry.invalid` to storage. The client's claimed `invalid` scalar is
+    ignored.
+  - `js/main.js` `commitMove` now records a rejected attempt in `session.log` (before
+    `invalidFeedback`) so the server replay actually sees the invalid actions; a rejected
+    command mutates no state, so retaining it is safe and the undo/`logLen` snapshots
+    remain consistent. `verifyEntry` was updated to the same count-and-skip rule so local
+    verification and the server agree.
+- **Verified:** a legit `c1` entry whose log includes 3 rejected attempts posts
+  `200 verified`; the stored `leaderboards.json` entry carries `invalid:3` and
+  `durationMs:7000` (engine-authoritative), i.e. a cheating `invalid:0` claim is no longer
+  trusted.
 
-  ```
-  real 30s/move  -> {"reason":"time-up","won":false}         elapsedMs 120000  total  700
-  claimed 0.1s   -> {"reason":"orders-complete","won":true}  elapsedMs    100  total 2465
-  ```
+## Remaining confirmed defects
 
-  and posted to the running server:
-
-  ```
-  POST /api/v1/leaderboard  -> 200 {"ok":true,"verified":true}
-  GET  ?board=challenge-c1  -> {"entries":[{"name":"TimeLiar","score":2465,"durationMs":100,
-                                            "verified":true}]}
-  ```
-
-  A challenge that must be finished inside 100 seconds was won with unlimited real time and
-  received a near-maximum time bonus.
-
-### 2. The invalid-action count used for tie-breaking is not part of authoritative state
-
-- **File:** `js/rules.js:113` (`createGame` state shape) and `js/rules.js:248-249`
-  (`applyCommand` rejection path); `js/main.js:388` (`invalidFeedback`); `server.js:158-170`
-- **Trigger:** submit any leaderboard entry with `invalid: 0`.
-- **Behaviour:** the rules state contains no invalid-action counter — `applyCommand` returns
-  `{ ok: false, reason, state: state, events: [] }` and leaves the state untouched. The count lives
-  only in the UI (`session.invalid`, incremented in `invalidFeedback`) and is copied into the
-  submission at `js/main.js:602`. `verifySubmission` never recomputes or checks it, and the POST
-  handler stores the parsed client object verbatim (`entry.verified = true; boards.entries.push(entry)`).
-  Both the client board (`js/store.js:101` `sortEntries`) and the server board (`server.js:151`)
-  then order ties by that unverified number.
-- **Expected:** spec §2 makes "fewer invalid actions" a ranking criterion, and spec §5 requires
-  competitive claims to be untrusted. A criterion the authoritative replay cannot reconstruct
-  cannot be enforced.
-- **Evidence:** the state literal at `js/rules.js:125-141` has no such field; `server.js:97-105`
-  replays the log without tracking rejections (a rejected command would in fact abort validation
-  with `illegal command in log`, so an honest log can never contain one).
+None. The two defects above are fixed; see *Suspected* for the unconfirmed latent items.
 
 ## Suspected — not confirmed
 
@@ -141,18 +126,21 @@ Each defect below was reproduced by executing the real modules, not merely repor
 
 ## Not tested
 
-- **`tests/e2e.mjs`**: not shipped, and this game has no `package.json` (so no `npm test` script).
-  Substituted a CDP boot check against `node server.js 39603`; it verifies a clean boot but does not
-  play a shift to completion.
 - **3-D rendering**: `js/render3d.js` (775 lines) was not reviewed beyond confirming the page raises
   no WebGL or console errors and that the `webgl-continue` fallback control is present.
 - **Hosted platform paths**: there is no `js/platform.js` in this game; host integration was not
   exercised.
 - **Board durability**: `loadBoards`/`saveBoards` write to a JSON file next to the server; restart
   and concurrent-writer behaviour was not assessed.
+- **Full timing authority**: an off-line replay can never verify a client's *total* real elapsed
+  time. The fix above makes time a verified lower bound (monotonic + per-move floor) rather than a
+  trusted claim, which closes the near-zero cheat; a client can still report a moderate-but-honest
+  pacing for a time limit. Fully authoritative timing requires a hosted server clock (spec §6 /
+  "in hosted play, the authoritative clock continues"), which this offline-first build does not use.
 
-## QA artifacts left on disk
+## QA artifacts
 
-Reproducing the findings above required running `shelf-shift/server.js` locally, which created an
-untracked `data/` directory. It holds the evidence entries used here (`TimeLiar`). **Delete
-`data/` before treating any of it as real data** — this QA pass had no permission to remove it.
+The replayed verification for the two fixes above ran `shelf-shift/server.js` locally and wrote an
+untracked `data/leaderboards.json`; it has been **deleted** after inspection (its stored `invalid:3`
+and `durationMs:7000` were read out and recorded in the *Resolved* section). `data/` is not part of
+the game and should not be treated as real data.
