@@ -223,6 +223,25 @@ test('endless mode issues new order waves instead of ending', () => {
   assert.ok(res.events.some(e => e.type === 'orders-new'));
 });
 
+test('endless order wave replaces the finished wave instead of accumulating', () => {
+  const cfg = baseCfg({ endless: true, stock: { teapot: 6 }, orders: { teapot: 3 }, counterStart: 0 });
+  let s = Rules.createGame(cfg);
+  s.shelves = [['teapot', 'teapot', null], [null, null, null], [null, null, null]];
+  s.counter[0] = 'teapot';
+  const res = Rules.applyCommand(s, { type: 'move', from: { area: 'counter', i: 0 }, to: { area: 'shelf', r: 0, c: 2 }, atMs: 100 });
+  assert.ok(res.ok);
+  const newWave = res.events.find(e => e.type === 'orders-new');
+  assert.ok(newWave);
+  // the requirement table and the tallies describe exactly the same wave
+  assert.deepStrictEqual(
+    Object.keys(res.state.cfg.orders).sort(),
+    Object.keys(res.state.orders).sort()
+  );
+  assert.deepStrictEqual(res.state.cfg.orders, newWave.orders);
+  // completing the wave again must not be blocked by a stale requirement
+  for (const t in res.state.orders) assert.strictEqual(res.state.orders[t], 0);
+});
+
 test('hint uses legal moves and prefers completing a triple', () => {
   const s = controlledState();
   const h = Rules.hint(s);
@@ -292,3 +311,12 @@ test('command shape validation rejects oversized payloads', () => {
 });
 
 console.log('\n' + passed + ' tests passed' + (process.exitCode ? ' (with failures)' : ''));
+
+// Mixed legacy/new records must have the same total order for every input order.
+test('leaderboard order stays consistent across legacy and completion entries', () => {
+  const Store = require('../js/store.js');
+  const rows = [{score:100,won:true,invalid:5,sessionId:'win'}, {score:100,won:false,invalid:0,sessionId:'loss'}, {score:100,invalid:2,sessionId:'legacy'}];
+  for (const order of [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]]) {
+    assert.deepStrictEqual(Store.sortEntries(order.map(i=>rows[i])).map(r=>r.sessionId), ['win','loss','legacy']);
+  }
+});

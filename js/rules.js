@@ -304,7 +304,11 @@
         var types = s.cfg.types;
         var nOrders = Math.min(types.length, 2 + Math.floor(rng.next() * 2));
         var shuffled = types.slice(); rng.shuffle(shuffled);
+        // The wave replaces the previous one: clearing the requirement table
+        // as well as the tallies. Leaving stale requirements behind would make
+        // every finished wave permanently re-required at its old count.
         s.orders = {};
+        s.cfg.orders = {};
         for (var oi = 0; oi < nOrders; oi++) {
           var ot = shuffled[oi];
           s.orders[ot] = 0;

@@ -13,9 +13,11 @@ evidence.
 
 | Check | Result |
 | --- | --- |
-| `npm test` (`node tests/rules.test.js`) | 19/19 pass |
+| `npm test` (`node tests/rules.test.js`) | 20/20 pass (2026-09-07) |
 | `node --check` on all modules | clean (8 `js/*.js` + `server.js`) |
 | `npm run test:e2e` (`node tests/e2e.mjs`, headless Chrome) | PASS — desktop + mobile playthrough, no page errors |
+| Browser smoke (2026-09-07): pause/visibility, keyboard board play, focus retention, restart guard, favicon | PASS, no console/page errors |
+| Server probes (2026-09-07): honest and inflated `challenge-c3` submissions, `GET /api/v1/leaderboard`, path-traversal attempts | `422 round not won` / `422 score mismatch` / `200` / contained (no escape from root) |
 
 ## Resolved
 
@@ -61,43 +63,103 @@ deterministic rules engine; each makes the server stop trusting a client-supplie
   `durationMs:7000` (engine-authoritative), i.e. a cheating `invalid:0` claim is no longer
   trusted.
 
+## Review pass 2026-09-07 (Claude Opus 5) — resolved
+
+### 3. Endless order waves left the finished wave permanently required — RESOLVED
+
+- **File:** `js/rules.js` (endless round advance)
+- **Defect:** the wave advance reset the tallies (`s.orders = {}`) but not the requirement table,
+  so every type from a completed wave stayed in `s.cfg.orders` at its old count with its tally
+  back at zero. `ordersComplete` reads `cfg.orders`, so each finished wave was silently
+  re-required forever and the order rail accumulated every type ever asked for.
+- **Fix:** the advance now clears `s.cfg.orders` alongside `s.orders`, so a wave replaces its
+  predecessor. Covered by the new unit test *"endless order wave replaces the finished wave
+  instead of accumulating"*.
+- **Note on suspected item 2 (below):** the `s.cfg.orders` write is still the mechanism, and it
+  remains replay-safe for the same reason as before (the cfg is cloned into the state at creation);
+  the defect was the missing reset, not the layering.
+
+### 4. Deliberate pause was cancelled by a tab switch — RESOLVED
+
+- **File:** `js/main.js` `visibilitychange`
+- **Defect:** returning to the tab called `resumeRound()` for any active round, so a round the
+  player had paused on purpose — or left running behind the Settings/Help overlay opened from the
+  pause menu — silently resumed and `hideScreens()` tore that overlay down.
+- **Fix:** a `pausedByHide` flag records whether *this* handler caused the pause; only that case
+  auto-resumes. Verified in a browser: pause → hide → show keeps `session.paused` and the pause
+  overlay, while an unpaused round still auto-pauses and auto-resumes.
+
+### 5. Keyboard could not operate the accessible DOM board — RESOLVED
+
+- **File:** `js/main.js` global `keydown`
+- **Defect:** the handler swallowed `Enter`/`Space` (`e.preventDefault()` → `onConfirm()` on the
+  3-D `cursor`) even while a `#board-mirror` cell button had DOM focus, so activating the focused
+  button never happened; arrow keys moved only the 3-D cursor ring. In the no-WebGL fallback —
+  where the DOM board *is* the playfield — the board was therefore unreachable by keyboard.
+- **Fix:** with focus on a board-mirror cell, `Enter`/`Space` fall through to native button
+  activation and the arrows move real DOM focus (kept in sync with the 3-D cursor ring via a
+  `focus` listener). Verified in a browser: focus a cell → Enter → focus target → Enter completes
+  a real move.
+
+### 6. Board mirror discarded keyboard focus on every action — RESOLVED
+
+- **File:** `js/main.js` `buildMirror`
+- **Defect:** the mirror is rebuilt from scratch after every move/selection, so keyboard and
+  screen-reader users lost their place on the board on each input.
+- **Fix:** cells carry a stable `data-loc`; the rebuild restores focus to the same cell.
+
+### 7. Restart inherited the previous round's double-commit guard — RESOLVED
+
+- **File:** `js/main.js` `startRound`
+- **Defect:** `session.lastCmdSig`/`lastCmdAt` survived a restart, so an identical first move
+  played within 250 ms of the previous round's last move was dropped by the double-tap guard.
+- **Fix:** both are reset when a round starts. Verified in a browser (restart → immediate repeat
+  of the same relocation lands).
+
+### 8. Leaderboard tie-break skipped objective completion — RESOLVED
+
+- **File:** `js/store.js` `sortEntries`, `server.js` GET sort, `js/main.js` `makeEntry`
+- **Fix of suspected item 1:** entries now carry `won`, and both comparators apply
+  `score → objective completion → invalid → durationMs → sessionId` as spec §2 requires. The
+  local comparator only applies the win step when both entries record it, so entries written
+  before the field existed keep their relative order. The server sets `entry.won` from its own
+  replay, never from the payload.
+
+### 9. Favicon artwork was overridden by a leftover placeholder — RESOLVED
+
+- **File:** `index.html`
+- **Defect:** the commit that added `favicon.svg` left the older inline `data:` icon link below it;
+  the later link wins, so browsers kept showing the placeholder.
+- **Fix:** the inline duplicate is removed (replaced by an `apple-touch-icon` pointing at
+  `icon.png`). Verified in a browser: exactly one `link[rel=icon]`, `./favicon.svg`.
+
+Also removed an unused `require('crypto')` from `server.js`, and added `LICENSE.md`
+(PolyForm Noncommercial 1.0.0), which the repo was missing.
+
 ## Remaining confirmed defects
 
-None. The two defects above are fixed; see *Suspected* for the unconfirmed latent items.
+None.
 
 ## Suspected — not confirmed
 
-### 1. Neither leaderboard applies the first spec tie-break (objective completion)
-
-- **File:** `server.js:151` and `js/store.js:101` (`sortEntries`)
-- **Concern:** both comparators are `score → invalid → durationMs → sessionId`; neither reads
-  `terminal.won`, and the stored entry does not carry it. Spec §2 requires ties to resolve on
-  "primary objective completion" first.
-- **Why unconfirmed:** every board turns out to be homogeneous in win state, so the missing step
-  currently has no observable effect. `daily-*` and `challenge-*` refuse unwon rounds
-  (`server.js:110-112`), and in `endless` mode `ordersComplete` starts a new order wave instead of
-  terminating (`js/rules.js:296-313`), so `won: true` is set only at `js/rules.js:315` — a
-  non-endless path. No pair of entries with different win states can share a board today. It is a
-  latent gap, not a live ranking error.
+### 1. ~~Neither leaderboard applies the first spec tie-break~~ — fixed above (item 8)
 
 ### 2. Endless order waves mutate `cfg` inside the live state
 
-- **File:** `js/rules.js:305-312`
-- **Concern:** the endless round-advance writes back into `s.cfg.orders`
-  (`s.cfg.orders[ot] = 3 * (1 + Math.floor(s.endlessRound / 2))`). `state.cfg` is the immutable
-  content definition everywhere else — `server.js:65` (`canonicalCfg`) deliberately rebuilds it
-  from versioned content "instead of trusting the client-supplied snapshot".
-- **Why unconfirmed:** because the config is cloned into the state at creation
-  (`js/rules.js:128`), the mutation stays inside the replay and reproduces identically on the
-  server, so no divergence could be demonstrated. It is a layering smell rather than a proven bug.
+- **File:** `js/rules.js` (endless round advance)
+- **Concern:** the endless round-advance writes back into `s.cfg.orders`. `state.cfg` is the
+  immutable content definition everywhere else — `server.js` `canonicalCfg` deliberately rebuilds
+  it from versioned content "instead of trusting the client-supplied snapshot".
+- **Why unconfirmed:** because the config is cloned into the state at creation, the mutation stays
+  inside the replay and reproduces identically on the server, so no divergence could be
+  demonstrated. It is a layering smell rather than a proven bug. (The one real defect it caused —
+  stale requirements across waves — is fixed as item 3.)
 
-### 3. Same-row triples clear only three at a time
+### 3. ~~Same-row triples clear only three at a time~~ — not reachable
 
-- **File:** `js/rules.js:275-277`
-- **Concern:** `var cells = byType[t].slice(0, 3)` clears exactly three, and `byType` is computed before any
-  clearing, so a row holding six of one type in a single move scores one clear, not two.
-- **Why unconfirmed:** with the shipped board widths (`cfg.board.cols`) it is not clear that six of
-  a kind can occupy one row, and no content or test exercises it.
+- `var cells = byType[t].slice(0, 3)` does clear exactly three, but the widest shipped board is
+  `cols: 4` (`js/content.js`), so a row can never hold six of one type. Unreachable with shipped
+  content; left as-is rather than adding an untestable loop.
 
 ## Checked, no defects found
 

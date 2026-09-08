@@ -41,6 +41,7 @@ let serverOffsetMs = 0;   // serverNow ≈ Date.now() + offset
 let selected = null;      // loc of lifted item
 let cursor = null;        // keyboard/gamepad focus loc
 let confirmTarget = null; // pending target when confirmMoves is on
+let pausedByHide = false; // round was auto-paused by the tab going hidden
 
 // ---------- tiny helpers ----------
 function now() { return Date.now() + serverOffsetMs; }
@@ -226,9 +227,16 @@ function currentScore(s) {
 }
 
 // ---------- accessible board mirror ----------
+function locKey(loc) {
+  return loc.area === 'counter' ? 'c:' + loc.i : 's:' + loc.r + ':' + loc.c;
+}
 function buildMirror() {
   const s = session.state;
   const shelvesHost = $('mirror-shelves'), counterHost = $('mirror-counter');
+  // The mirror is rebuilt after every action; without this, keyboard and
+  // screen-reader users lose their place on the board on every single move.
+  const active = document.activeElement;
+  const refocus = active && active.dataset && active.closest('#board-mirror') ? active.dataset.loc : null;
   shelvesHost.innerHTML = ''; counterHost.innerHTML = '';
   if (!s) return;
   for (let r = s.shelves.length - 1; r >= 0; r--) {
@@ -244,6 +252,10 @@ function buildMirror() {
   for (let i = 0; i < s.counter.length; i++)
     crow.appendChild(mirrorCell({ area: 'counter', i }, s.counter[i]));
   counterHost.appendChild(crow);
+  if (refocus) {
+    const again = $('board-mirror').querySelector('[data-loc="' + refocus + '"]');
+    if (again) again.focus({ preventScroll: true });
+  }
 }
 function mirrorCell(loc, item) {
   const label = item ? Content.ITEMS[item].label : 'empty';
@@ -254,7 +266,13 @@ function mirrorCell(loc, item) {
     'aria-pressed': selected && Rules.locEq(loc, selected) ? 'true' : 'false',
     text: item ? Content.ITEMS[item].icon : '·'
   });
+  btn.dataset.loc = locKey(loc);
   btn.addEventListener('click', () => tapCell(loc));
+  // Keep the 3-D cursor ring and DOM focus describing the same cell.
+  btn.addEventListener('focus', () => {
+    cursor = loc;
+    if (renderer) renderer.setCursor(loc);
+  });
   return btn;
 }
 function legalTarget(loc) {
@@ -277,7 +295,10 @@ function startRound(cfg, mode) {
   session.paused = false;
   session.active = true;
   session.lesson = null;
-  selected = null; cursor = null; confirmTarget = null;
+  // A fresh round must not inherit the previous round's double-commit guard,
+  // or an identical first move played within 250 ms would be swallowed.
+  session.lastCmdSig = ''; session.lastCmdAt = 0;
+  selected = null; cursor = null; confirmTarget = null; pausedByHide = false;
   Audio.setAvRng(RNG.derive(cfg.seed, RNG.STREAM_AV));
 
   if (renderer) {
@@ -298,12 +319,14 @@ function startRound(cfg, mode) {
 function endActiveSession() {
   session.active = false;
   session.paused = true;
+  pausedByHide = false;
   selected = null; cursor = null;
   if (renderer) { renderer.clearSelection(); renderer.setCursor(null); }
 }
 
 function pauseRound(showOverlay) {
   if (!session.active || session.paused) return;
+  if (showOverlay !== false) pausedByHide = false;
   session.paused = true;
   if (renderer) renderer.setRunning(false);
   Audio.suspend();
@@ -311,6 +334,7 @@ function pauseRound(showOverlay) {
 }
 function resumeRound() {
   if (!session.active) return;
+  pausedByHide = false;
   session.paused = false;
   session.lastStamp = performance.now();
   if (renderer) renderer.setRunning(true);
@@ -606,6 +630,7 @@ function makeEntry(state) {
     name: playerName(),
     score: state.score.total,
     seed: state.cfg.seed, ruleset: state.cfg.id, version: state.cfg.version,
+    won: !!(state.terminal && state.terminal.won),
     assists: session.assists, durationMs: Math.round(session.elapsedMs),
     invalid: session.invalid, sessionId: session.sessionId,
     date: new Date(serverNow()).toISOString().slice(0, 10),
@@ -806,6 +831,11 @@ function moveCursor(dir) {
   if (renderer) renderer.setCursor(cursor);
   Audio.play('ui');
 }
+function focusMirrorCell(loc) {
+  if (!loc) return;
+  const btn = $('board-mirror').querySelector('[data-loc="' + locKey(loc) + '"]');
+  if (btn) btn.focus({ preventScroll: false });
+}
 function onConfirm() {
   if (!session.active || session.paused) return;
   if (!cursor) { moveCursor(); return; }
@@ -829,6 +859,20 @@ document.addEventListener('keydown', e => {
   }
   if (inField) return;
   if (!session.active) return;
+  // A focused DOM board button is the playfield in the accessible/no-WebGL
+  // path: leave Enter/Space to activate it natively, and let the arrows move
+  // real DOM focus so keyboard play matches what the focus ring shows.
+  const onMirrorCell = document.activeElement && document.activeElement.dataset &&
+    document.activeElement.dataset.loc && document.activeElement.closest('#board-mirror');
+  if (onMirrorCell) {
+    if (e.key === 'Enter' || e.key === ' ') return;
+    if (/^Arrow(Left|Right|Up|Down)$/.test(e.key)) {
+      e.preventDefault();
+      moveCursor(e.key.slice(5).toLowerCase());
+      focusMirrorCell(cursor);
+      return;
+    }
+  }
   switch (e.key) {
     case 'ArrowLeft': e.preventDefault(); moveCursor('left'); break;
     case 'ArrowRight': e.preventDefault(); moveCursor('right'); break;
@@ -983,10 +1027,14 @@ setInterval(() => { // HUD clock + daily countdown
 // ---------- lifecycle ----------
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    // Only auto-resume a round that this handler paused: a round the player
+    // paused deliberately (or left to open Settings/Help) must stay paused.
+    pausedByHide = session.active && !session.paused;
     pauseRound(false);
     if (renderer) renderer.setRunning(false);
     Audio.suspend();
-  } else if (session.active) {
+  } else if (session.active && pausedByHide) {
+    pausedByHide = false;
     resumeRound();
     toast('Welcome back — round resumed.');
   }

@@ -96,11 +96,14 @@
     try { localStorage.setItem(LB_KEY, JSON.stringify(b)); } catch (e) {}
   }
 
-  // Ties: higher score, then fewer invalid actions, then lower elapsed,
-  // then stable session id. Returns sorted copy.
+  // Ties: higher score, then primary-objective completion (spec §2), then
+  // fewer invalid actions, then lower elapsed, then stable session id.
+  // Legacy entries have no recorded completion; use one consistent key for
+  // all pairs so mixed old/new records have a transitive ordering.
   function sortEntries(entries) {
     return entries.slice().sort(function (a, b) {
       if (b.score !== a.score) return b.score - a.score;
+      if ((a.won === true) !== (b.won === true)) return a.won === true ? -1 : 1;
       if ((a.invalid || 0) !== (b.invalid || 0)) return (a.invalid || 0) - (b.invalid || 0);
       if ((a.durationMs || 0) !== (b.durationMs || 0)) return (a.durationMs || 0) - (b.durationMs || 0);
       return String(a.sessionId).localeCompare(String(b.sessionId));

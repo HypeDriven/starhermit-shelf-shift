@@ -17,7 +17,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const Rules = require('./js/rules.js');
 const Content = require('./js/content.js');
@@ -137,8 +136,9 @@ function verifySubmission(entry) {
   if (timed && validMoves > 0 && state.elapsedMs < validMoves * MIN_MS_PER_MOVE) {
     return { ok: false, error: 'implausible time' };
   }
-  entry.invalid = invalidActions.length; // authoritative, reconstructed from the log
-  entry.durationMs = state.elapsedMs;    // authoritative elapsed time
+  entry.invalid = invalidActions.length;  // authoritative, reconstructed from the log
+  entry.durationMs = state.elapsedMs;     // authoritative elapsed time
+  entry.won = !!state.terminal.won;       // authoritative objective completion (tie-break)
   return { ok: true, verified: true };
 }
 
@@ -177,7 +177,9 @@ const server = http.createServer((req, res) => {
       const boards = loadBoards();
       const entries = boards.entries
         .filter(e => e.board === board && e.verified)
-        .sort((a, b) => b.score - a.score || (a.invalid || 0) - (b.invalid || 0) ||
+        .sort((a, b) => b.score - a.score ||
+                        (b.won === true ? 1 : 0) - (a.won === true ? 1 : 0) ||
+                        (a.invalid || 0) - (b.invalid || 0) ||
                         (a.durationMs || 0) - (b.durationMs || 0) || String(a.sessionId).localeCompare(String(b.sessionId)))
         .slice(0, 100)
         .map(e => ({ name: e.name, score: e.score, seed: e.seed, ruleset: e.ruleset, version: e.version,
@@ -205,7 +207,9 @@ const server = http.createServer((req, res) => {
 
   // static files (no secrets, no dotfiles, no path escape)
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method not allowed' });
-  let rel = decodeURIComponent(url.pathname);
+  let rel;
+  try { rel = decodeURIComponent(url.pathname); } catch { return send(res, 400, { error: 'bad path' }); }
+  if (rel.split(/[\\/]/).some(p => p.startsWith('.') || ['data', 'node_modules'].includes(p))) return send(res, 403, { error: 'forbidden' });
   if (rel === '/') rel = '/index.html';
   const file = path.normalize(path.join(ROOT, rel));
   if (!file.startsWith(ROOT) || rel.includes('..') || path.basename(rel).startsWith('.')) {
