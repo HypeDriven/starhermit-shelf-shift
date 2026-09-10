@@ -41,7 +41,7 @@ Score chase (endless, replay-verified leaderboard).
 | `js/rules.js` | pure deterministic rules engine: legality, resolution, scoring, serialization, state hashing |
 | `js/content.js` | versioned items, themes, 40 journey stages, challenges, tutorial, daily generator |
 | `js/store.js` | versioned, checksummed local save + leaderboards |
-| `js/audio.js` | procedural WebAudio (no assets): sfx, ambience, generative music |
+| `js/audio.js` | WebAudio: authored one-shots in `sfx/*.opus` per logical event (synth fallback), ambience, generative music |
 | `js/render3d.js` | Three.js boutique scene, animation, particles, quality tiers |
 | `js/ui.js` | DOM screens/settings/results builders |
 | `js/main.js` | bootstrap, session, input (pointer/keyboard/gamepad), platform glue |
