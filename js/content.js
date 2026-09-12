@@ -244,7 +244,7 @@
           board: { shelves: 2, cols: 3, counter: 3 }, types: ['teapot'],
           stock: { teapot: 2 }, orders: { teapot: 3 }, counterStart: 1, delivery: null,
           moveLimit: 0, timeLimitSec: 0, par: null, mechanics: { undo: false, hint: true }, endless: false },
-        force: { counter0: 'teapot' } },
+        force: { counter0: 'teapot', shelves: [[null, null, null], ['teapot', 'teapot', null]] } },
       { id: 't3', title: 'Fill an order',
         text: 'The order list (left) asks for specific objects. Cleared triples fill it. Finish this order of teapots and candles to complete the stage.',
         goal: { event: 'win', count: 1 },

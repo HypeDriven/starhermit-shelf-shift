@@ -404,13 +404,61 @@ export function createRenderer(opts) {
     renderer.compile(scene, camera);
   }
 
+  // Screen rectangle not covered by HUD chrome (top bar, rails, tray, lesson
+  // banner). The camera frames the board inside it via a view offset.
+  function safeRect() {
+    const W = host.clientWidth, H = host.clientHeight;
+    let top = 0, bottom = H, left = 0, right = W;
+    const vis = (id) => {
+      const el = document.getElementById(id);
+      if (!el || el.classList.contains('hidden')) return null;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      const h = host.getBoundingClientRect();
+      return { x: r.left - h.left, y: r.top - h.top, w: r.width, h: r.height };
+    };
+    const carve = (r) => {
+      if (!r) return;
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      // full-width band → carve top/bottom; otherwise carve the nearer side
+      if (r.w > W * 0.6) { if (cy < H / 2) top = Math.max(top, r.y + r.h); else bottom = Math.min(bottom, r.y); return; }
+      if (r.h > (bottom - top) * 0.5 || r.w < W * 0.35) {
+        if (cx < W / 2) left = Math.max(left, r.x + r.w); else right = Math.min(right, r.x);
+        return;
+      }
+      if (cy < H / 2) top = Math.max(top, r.y + r.h); else bottom = Math.min(bottom, r.y);
+    };
+    carve(vis('hud-top'));
+    carve(vis('hud-orders'));
+    carve(vis('hud-actions'));
+    const banner = vis('lesson-banner');
+    if (banner) {
+      // a wide banner across the top pushes the board down; a narrow docked
+      // one behaves like a side rail
+      if (banner.w > W * 0.45) top = Math.max(top, banner.y + banner.h);
+      else if (banner.x + banner.w / 2 < W / 2) left = Math.max(left, banner.x + banner.w);
+      else right = Math.min(right, banner.x);
+    }
+    // never let chrome squeeze the play rect below a usable size
+    if (right - left < W * 0.4) { left = 0; right = W; }
+    if (bottom - top < H * 0.4) { top = Math.min(top, H * 0.3); bottom = Math.max(bottom, H * 0.7); }
+    return { x: left, y: top, w: right - left, h: bottom - top, W, H };
+  }
+
   function fitCamera() {
-    const aspect = host.clientWidth / Math.max(1, host.clientHeight);
-    const vFit = (boardDims.h * 0.62) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const sr = safeRect();
+    // extra headroom at the top: the shelf unit's cap sits above the top row
+    const pad = 8, padTop = Math.min(48, sr.h * 0.08);
+    const sx = sr.x + pad, sy = sr.y + padTop, sw = Math.max(1, sr.w - pad * 2), sh = Math.max(1, sr.h - pad - padTop);
+    camera.aspect = sw / sh;
+    camera.setViewOffset(sw, sh, -sx, -sy, sr.W, sr.H);
+    camera.updateProjectionMatrix();
+    const aspect = camera.aspect;
+    const vFit = (boardDims.h * 0.8) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const hFit = (boardDims.w * 0.72) / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * aspect);
     const dist = Math.max(7.5, vFit, hFit) + 1.2;
     camBase.set(0, 2.2 + boardDims.h * 0.42, dist);
-    camTarget.set(0, boardDims.h * 0.44, 0.6);
+    camTarget.set(0, boardDims.h * 0.5, 0.6);
     camera.position.copy(camBase);
     camera.lookAt(camTarget);
   }
@@ -708,8 +756,6 @@ export function createRenderer(opts) {
     const w = host.clientWidth, h = host.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
     fitCamera();
   }
 

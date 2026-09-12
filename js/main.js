@@ -748,6 +748,8 @@ function startLesson(i) {
     lesson.force.counterTypes.forEach((t, k) => { session.state.counter[k] = t; });
   if (lesson.force && lesson.force.counter0)
     session.state.counter[0] = lesson.force.counter0;
+  if (lesson.force && lesson.force.shelves)
+    lesson.force.shelves.forEach((row, r) => row.forEach((t, c) => { session.state.shelves[r][c] = t; }));
   session.log = []; session.undoStack = []; session.invalid = 0;
   session.assists = false; session.elapsedMs = 0;
   session.lastStamp = performance.now();
@@ -795,6 +797,13 @@ function lessonProgress(events, action) {
     }
   }
 }
+$('lesson-toggle').addEventListener('click', () => {
+  const b = $('lesson-banner');
+  const collapsed = b.classList.toggle('collapsed');
+  $('lesson-toggle').textContent = collapsed ? 'Show' : 'Hide';
+  $('lesson-toggle').setAttribute('aria-expanded', String(!collapsed));
+  if (renderer) renderer.resize();
+});
 $('lesson-quit').addEventListener('click', () => {
   session.lesson = null;
   $('lesson-banner').classList.add('hidden');
@@ -1097,6 +1106,25 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.addEventListener('resize', () => renderer && renderer.resize());
+// Refit the board whenever HUD chrome (lesson banner, rails, tray) changes size
+// or visibility, so it is framed in the uncovered part of the screen.
+{
+  let refit = 0;
+  const schedule = () => {
+    cancelAnimationFrame(refit);
+    refit = requestAnimationFrame(() => {
+      const b = $('lesson-banner');
+      const h = b.classList.contains('hidden') ? 0 : b.getBoundingClientRect().height;
+      $('app').style.setProperty('--banner-h', Math.round(h) + 'px');
+      if (renderer) renderer.resize();
+    });
+  };
+  const watched = ['lesson-banner', 'hud-top', 'hud-orders', 'hud-actions'].map((id) => $(id)).filter(Boolean);
+  if (typeof ResizeObserver === 'function') { const ro = new ResizeObserver(schedule); watched.forEach((el) => ro.observe(el)); }
+  const mo = new MutationObserver(schedule);
+  watched.forEach((el) => mo.observe(el, { attributes: true, attributeFilter: ['class'] }));
+  mo.observe($('app'), { attributes: true, attributeFilter: ['data-screen'] });
+}
 window.addEventListener('orientationchange', () => setTimeout(() => renderer && renderer.resize(), 60));
 
 // ---------- boot ----------

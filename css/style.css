@@ -214,6 +214,11 @@ body.large-text { --font-scale: 1.25; }
   padding: 0.9rem 1.1rem; max-width: min(520px, 92vw); box-shadow: 0 8px 30px #000a;
 }
 #lesson-banner p { margin: 0.3rem 0 0.6rem; }
+.lesson-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+#lesson-banner.collapsed p, #lesson-banner.collapsed #lesson-quit { display: none; }
+#lesson-banner.collapsed { padding: 0.4rem 0.7rem; display: flex; align-items: center; gap: 0.6rem; }
+/* the banner yields to any open screen (pause, settings, results) */
+#app:not([data-screen="game"]) #lesson-banner { display: none; }
 #toast {
   position: absolute; z-index: 60; left: 50%; bottom: calc(90px + var(--sab)); transform: translateX(-50%);
   background: var(--accent); color: #241305; font-weight: 600;
@@ -252,6 +257,11 @@ tr.me { background: #ffb06622; }
   #hud-orders { top: calc(56px + var(--sat)); left: calc(8px + var(--sal)); transform: none; max-width: 46vw; }
   #hud-message { bottom: calc(76px + var(--sab)); }
   .panel { max-height: 82vh; }
+  /* lesson banner spans the width under the top bar; the orders rail drops
+     below it (--banner-h is measured in main.js) */
+  #lesson-banner { top: calc(56px + var(--sat)); left: 8px; right: 8px; transform: none; max-width: none; padding: 0.6rem 0.8rem; font-size: 0.92em; }
+  #app:not([data-screen="game"]) #lesson-banner { display: none; }
+  #hud-orders { top: calc(64px + var(--sat) + var(--banner-h, 0px)); }
 }
 
 /* landscape mobile: narrow left status rail, right action tray */
@@ -259,7 +269,13 @@ tr.me { background: #ffb06622; }
   #hud-orders { max-width: 150px; padding: 0.4rem 0.6rem; font-size: 0.85em; }
   #hud-actions { gap: 0.35rem; }
   .btn.icon { min-height: 44px; }
-  #lesson-banner { top: calc(44px + var(--sat)); }
+  /* lesson banner docks as a left column above the orders rail so the board
+     keeps the centre of the screen */
+  #lesson-banner {
+    top: calc(44px + var(--sat)); left: calc(10px + var(--sal)); transform: none;
+    max-width: 200px; padding: 0.5rem 0.7rem; font-size: 0.85em;
+  }
+  #hud-orders { top: auto; bottom: calc(10px + var(--sab)); transform: none; }
 }
 
 /* reduced motion: no transitions/animation flourishes */

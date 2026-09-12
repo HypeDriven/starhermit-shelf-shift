@@ -39,7 +39,7 @@ Lose only when staging cells fill; score order streaks and spare capacity. Resul
 
 ### Modes
 
-- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action.
+- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action. Lesson fixtures are explicit (lesson 2 starts with two teapots on the top shelf and one on the counter). The lesson banner can be collapsed to a title chip, hides behind any open screen, docks as a left column in short landscape and a full-width strip in portrait; the camera frames the board inside the screen area not covered by HUD chrome.
 - **Journey:** authored progression with gradually combined mechanics and periodic mastery stages.
 - **Daily:** one shared seed and ruleset per UTC day, synchronized to platform time.
 - **Practice:** selectable difficulty, restart, undo where rules permit, and no effect on competitive rating.
