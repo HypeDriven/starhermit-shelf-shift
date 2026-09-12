@@ -280,11 +280,20 @@
     host.innerHTML = '';
     const p = ctx.saveDoc.progress;
     const st = p.stats;
-    const nameIn = el('input', {
-      type: 'text', value: ctx.playerName(), maxlength: '24', 'aria-label': 'Display name',
-      onchange: e => { ctx.setPlayerName(e.target.value); }
-    });
-    host.appendChild(el('label', {}, [document.createTextNode('Display name '), nameIn]));
+    if (ctx.platform.hosted()) {
+      // Platform identity: nickname comes from the account profile (adapter);
+      // the free-text display name below is the local-guest identity only.
+      host.appendChild(el('div', { class: 'stat-grid' }, [
+        stat('Account', ctx.platform.displayName() || 'Player'),
+        stat('Cloud save', ctx.platform.syncLabel() || '—')
+      ]));
+    } else {
+      const nameIn = el('input', {
+        type: 'text', value: ctx.playerName(), maxlength: '24', 'aria-label': 'Display name',
+        onchange: e => { ctx.setPlayerName(e.target.value); }
+      });
+      host.appendChild(el('label', {}, [document.createTextNode('Display name '), nameIn]));
+    }
     host.appendChild(el('div', { class: 'stat-grid' }, [
       stat('Rounds', st.rounds), stat('Wins', st.wins), stat('Triples', st.clears),
       stat('Items cleared', st.itemsCleared), stat('Best streak', st.bestStreak),
@@ -319,7 +328,10 @@
   }
 
   // ---------- leaderboard ----------
-  function buildLeaderboard(host, ctx, entries, tab) {
+  // entries: local records (always available). platformEntries: the
+  // platform-owned global board, read-only — shown for the game's primary
+  // ranked mode (Score chase) when the platform hosts one.
+  function buildLeaderboard(host, ctx, entries, tab, platformEntries) {
     host.innerHTML = '';
     const tabs = el('div', { class: 'lb-tabs', role: 'tablist' });
     for (const t of [['endless', 'Score chase'], ['daily', 'Daily'], ['challenge', 'Challenges']]) {
@@ -350,6 +362,25 @@
     });
     if (!entries.length) host.appendChild(el('p', { class: 'mini', text: 'No entries yet — be the first.' }));
     host.appendChild(table);
+    if (tab === 'endless' && platformEntries && platformEntries.length) {
+      host.appendChild(el('h3', { text: 'Platform rankings' }));
+      host.appendChild(el('p', {
+        class: 'mini',
+        text: 'Global board hosted by StarHermit — read-only. Your ranked runs submit to the game backend for replay verification.'
+      }));
+      const pt = el('table', { class: 'lb' });
+      pt.appendChild(el('tr', {}, [
+        el('th', { text: '#' }), el('th', { text: 'Player' }), el('th', { text: 'Score' })
+      ]));
+      platformEntries.forEach((e, i) => {
+        pt.appendChild(el('tr', {}, [
+          el('td', { text: String(i + 1) }),
+          el('td', { text: e.name }),
+          el('td', { text: String(e.score) })
+        ]));
+      });
+      host.appendChild(pt);
+    }
   }
 
   // ---------- learn list ----------

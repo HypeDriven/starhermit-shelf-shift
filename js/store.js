@@ -64,25 +64,33 @@
 
   var memoryFallback = null; // used when localStorage is unavailable
 
+  function wrap(doc) { // the exact checksummed string persisted (and cloud-mirrored)
+    doc.v = SAVE_VERSION;
+    var payload = JSON.stringify(doc);
+    return JSON.stringify({ sum: checksum(payload), payload: payload });
+  }
+  function unwrap(raw) { // validate + migrate a wrapped string; null when corrupt
+    try {
+      var box = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!box || box.sum !== checksum(box.payload)) return null;
+      return migrate(JSON.parse(box.payload)) || null;
+    } catch (e) { return null; }
+  }
+
   function load() {
     var raw = null;
     try { raw = localStorage.getItem(KEY); } catch (e) { /* private mode */ }
     if (raw == null && memoryFallback) raw = memoryFallback;
     if (raw == null) return fresh();
-    try {
-      var doc = JSON.parse(raw);
-      if (!doc || doc.sum !== checksum(doc.payload)) return fresh(); // corrupt → clean slate
-      var migrated = migrate(JSON.parse(doc.payload));
-      return migrated || fresh();
-    } catch (e) { return fresh(); }
+    var migrated = unwrap(raw);
+    return migrated || fresh(); // corrupt → clean slate
   }
 
   function save(doc) {
-    doc.v = SAVE_VERSION;
-    var payload = JSON.stringify(doc);
-    var wrapped = JSON.stringify({ sum: checksum(payload), payload: payload });
+    var wrapped = wrap(doc);
     memoryFallback = wrapped;
     try { localStorage.setItem(KEY, wrapped); } catch (e) { /* memory fallback keeps session */ }
+    return wrapped;
   }
 
   // ---------- leaderboards (local; host adapter may sync) ----------
@@ -114,7 +122,7 @@
     SAVE_VERSION: SAVE_VERSION,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     load: load, save: save, fresh: fresh, migrate: migrate,
-    checksum: checksum,
+    checksum: checksum, wrap: wrap, unwrap: unwrap,
     loadBoards: loadBoards, saveBoards: saveBoards, sortEntries: sortEntries
   };
 });

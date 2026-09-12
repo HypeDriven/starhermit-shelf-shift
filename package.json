@@ -3,8 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "test": "node tests/rules.test.js",
-    "test:e2e": "node tests/e2e.mjs"
+    "test": "node tests/rules.test.js && node tests/platform.test.js",
+    "test:e2e": "node tests/e2e.mjs",
+    "test:hosted": "node tests/hosted-smoke.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0"

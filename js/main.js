@@ -11,11 +11,15 @@ const Store = window.SSStore;
 const RNG = window.SSRNG;
 const UI = window.SSUI;
 const Audio = window.SSAudio;
+const Platform = window.SSPlatform;
 
 const $ = id => document.getElementById(id);
 
 // ---------- persistent document ----------
 let saveDoc = Store.load();
+
+// ---------- StarHermit platform adapter (inert without a launch token) ----------
+const platform = Platform.create({ onSync: updateSyncStatus });
 
 // ---------- session ----------
 const session = {
@@ -36,7 +40,7 @@ const session = {
 
 let renderer = null;
 let screenStack = [];
-let hosted = false;
+let devServer = false;    // the repo's own server.js answered /api/v1/time (local dev)
 let serverOffsetMs = 0;   // serverNow ≈ Date.now() + offset
 let selected = null;      // loc of lifted item
 let cursor = null;        // keyboard/gamepad focus loc
@@ -45,7 +49,33 @@ let pausedByHide = false; // round was auto-paused by the tab going hidden
 
 // ---------- tiny helpers ----------
 function now() { return Date.now() + serverOffsetMs; }
-function persist() { Store.save(saveDoc); }
+function persist() {
+  const wrapped = Store.save(saveDoc); // localStorage stays the offline cache
+  platform.queueCloudSave(wrapped);    // cloud is a mirror (hosted only)
+}
+// Small sync/account line under the title (hosted only; hidden in local play).
+function updateSyncStatus() {
+  const el = $('platform-status');
+  if (!el) return;
+  const name = platform.hosted() ? platform.displayName() : null;
+  const label = platform.syncLabel();
+  const text = [name ? 'Playing as ' + name : null, label].filter(Boolean).join(' · ');
+  el.textContent = text;
+  el.hidden = !text;
+}
+// Remote-preferred whole-doc load: the cloud copy wins; localStorage is
+// rewritten underneath it so offline play continues from the same state.
+async function pullCloudSave() {
+  const wrapped = await platform.loadCloudSave();
+  if (!wrapped) return;
+  const doc = Store.unwrap(wrapped);
+  if (!doc) return;
+  saveDoc = doc;
+  persist();
+  applySettings();
+  refreshTitle();
+  toast('Progress synced from your account.');
+}
 function toast(msg, ms) {
   const t = $('toast');
   t.textContent = msg;
@@ -122,8 +152,13 @@ function totalStars() {
   return Object.values(saveDoc.progress.journeyStars).reduce((a, b) => a + b, 0);
 }
 
-// ---------- platform (optional StarHermit-style host) ----------
-async function detectHost() {
+// ---------- own dev server (local play only; never probed on-platform) ----------
+// The repo's server.js (starhermit.txt `server=server.js`) provides time sync,
+// funnel telemetry, and the replay-verified leaderboard for local development.
+// On the platform there is no per-game time/telemetry route, so hosted sessions
+// (launch token present) never probe these — no fabricated calls, no 404 noise.
+async function detectDevServer() {
+  if (platform.hosted()) return;
   try {
     const t0 = Date.now();
     const res = await fetch('/api/v1/time', { signal: AbortSignal.timeout(2500) });
@@ -131,14 +166,14 @@ async function detectHost() {
     if (!res.ok) return;
     const data = await res.json();
     if (typeof data.now === 'number') {
-      hosted = true;
+      devServer = true;
       serverOffsetMs = data.now - Math.round((t0 + t1) / 2); // round-trip adjusted
     }
   } catch (e) { /* offline / static hosting: fully playable */ }
 }
 function serverNow() { return Date.now() + serverOffsetMs; }
 function telemetry(event, data) {
-  if (!hosted) return;
+  if (!devServer) return;
   try {
     fetch('/api/v1/telemetry', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -659,10 +694,15 @@ function submitEntry(entry) {
   boards.entries.push(entry);
   if (boards.entries.length > 400) boards.entries = Store.sortEntries(boards.entries).slice(0, 400);
   Store.saveBoards(boards);
-  if (hosted) {
+  // The repo's own backend (when the platform hosts it per starhermit.txt)
+  // re-verifies the replay authoritatively; carry the launch token so it can
+  // authenticate the submitter. When the backend is absent (404 / offline)
+  // the local record above is the graceful fallback — silent, no console noise.
+  if (platform.hosted() || devServer) {
     try {
       fetch('/api/v1/leaderboard', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...platform.authHeaders() },
         body: JSON.stringify(entry)
       }).catch(() => {});
     } catch (e) {}
@@ -681,7 +721,13 @@ function leaderboardEntries(tab) {
 }
 
 // ---------- profile ----------
-function playerName() { return saveDoc.profileName || 'Guest'; }
+// Hosted sessions are identified by the platform account nickname (resolved
+// from /api/v1/users/{sub}/profile by the adapter); the free-text name below
+// is the local-guest identity only.
+function playerName() {
+  if (platform.hosted()) return platform.displayName() || 'Player';
+  return saveDoc.profileName || 'Guest';
+}
 function setPlayerName(n) {
   saveDoc.profileName = (n || '').slice(0, 24) || 'Guest';
   persist();
@@ -988,9 +1034,20 @@ function openMode(mode) {
   UI.buildSetup($('setup-body'), ctx, mode);
   show('setup');
 }
+let lbSeq = 0;
 function showLeaderboard(tab) {
-  UI.buildLeaderboard($('lb-body'), ctx, leaderboardEntries(tab), tab);
+  // Local records render immediately; the platform's global board is
+  // read-only and arrives when the platform hosts one (leaderboardId).
+  UI.buildLeaderboard($('lb-body'), ctx, leaderboardEntries(tab), tab, null);
   show('leaderboard');
+  if (!platform.hosted()) return;
+  const req = ++lbSeq;
+  platform.fetchPlatformLeaderboard(50).then(platformEntries => {
+    if (platformEntries && req === lbSeq &&
+        document.getElementById('app').dataset.screen === 'leaderboard') {
+      UI.buildLeaderboard($('lb-body'), ctx, leaderboardEntries(tab), tab, platformEntries);
+    }
+  });
 }
 function remapGamepad(action) {
   remapAction = action;
@@ -1007,7 +1064,7 @@ function resetSave() {
 
 // ---------- shared ctx for ui.js ----------
 const ctx = {
-  Rules, Content, Store, SSRNG: RNG,
+  Rules, Content, Store, SSRNG: RNG, platform,
   get saveDoc() { return saveDoc; },
   set saveDoc(v) { saveDoc = v; },
   dailyCfg: null,
@@ -1067,7 +1124,13 @@ function boot() {
   const kick = () => { Audio.start(); document.removeEventListener('pointerdown', kick); document.removeEventListener('keydown', kick); };
   document.addEventListener('pointerdown', kick);
   document.addEventListener('keydown', kick);
-  detectHost().then(() => { if (hosted) refreshDaily(); });
+  // Hosted iff a launch token was read: authenticate, pull the cloud save
+  // (remote wins), and show account/sync status. Otherwise probe only for the
+  // repo's own dev server (time sync / verified boards) — never on-platform.
+  platform.start();
+  updateSyncStatus();
+  if (platform.hosted()) void pullCloudSave();
+  detectDevServer().then(() => { if (devServer) refreshDaily(); });
 }
 
 boot();
