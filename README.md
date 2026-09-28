@@ -42,7 +42,8 @@ Score chase (endless, replay-verified leaderboard).
 | `js/content.js` | versioned items, themes, 40 journey stages, challenges, tutorial, daily generator |
 | `js/store.js` | versioned, checksummed local save + leaderboards |
 | `js/audio.js` | WebAudio: authored one-shots in `sfx/*.opus` per logical event (synth fallback), ambience, generative music |
-| `js/render3d.js` | Three.js boutique scene, animation, particles, quality tiers |
+| `js/render3d.js` | Three.js boutique scene, animation, particles, post-processing, live graphics settings |
+| `js/gfx.js` | graphics quality model: presets, overrides, GPU detection, cost summary, panel strings |
 | `js/ui.js` | DOM screens/settings/results builders |
 | `js/main.js` | bootstrap, session, input (pointer/keyboard/gamepad), platform glue |
 | `server.js` | static host + `/api/v1` time, daily, replay-verified leaderboard |

@@ -142,8 +142,9 @@ function applySettings() {
     c._timer = setTimeout(() => c.classList.add('hidden'), 1500);
   });
   if (renderer) {
+    renderer.setSettings(s);
     renderer.setReducedMotion(!!s.reducedMotion);
-    if (s.graphicsTier !== 'auto') renderer.setQuality(s.graphicsTier);
+    renderer.setGraphics(s.gfx);
     renderer.setTheme(s.theme);
   }
 }
@@ -1073,6 +1074,8 @@ function resetSave() {
 
 // ---------- shared ctx for ui.js ----------
 const ctx = {
+  gfx: window.SSGfx,
+  graphicsInfo: () => (renderer ? renderer.graphicsInfo() : null),
   Rules, Content, Store, SSRNG: RNG, platform,
   get saveDoc() { return saveDoc; },
   set saveDoc(v) { saveDoc = v; },

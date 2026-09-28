@@ -121,6 +121,10 @@ The subject is the active playfield at near-tabletop to room scale, framed so st
 - Event hierarchy: input acknowledgment < legal move < combo/goal < round completion. Reserve camera motion, strong emission, and dense particles for the highest tier.
 - Audio uses original short transients tied to logical events, layered material impacts, quiet ambience, and adaptive music stems. Randomized pitch/variant is seeded for replay consistency where recording matters.
 
+### Graphics
+
+A warm directional key light casts PCF soft shadows from a shadow box fitted tightly around the shelf unit, counter and side crates; a hemisphere fill, a rim light and ACES filmic tone mapping with sRGB output complete the base lighting, and the no-post Low preset keeps the same hierarchy. Optional effects: image-based lighting from a prefiltered room environment (reflections on glazed and metal pieces), procedural surface detail (wood grain on the shelves, counter and crates, plank flooring, striped wallpaper with wainscot panelling, metal pendant shades with glowing bulbs and a lamp glow, framed pictures beside the shelf, clear-coated ceramics, satin candle wax and metal lanterns and clocks), GTAO ambient occlusion, bloom limited to flames, lantern glass and bulbs, a warm colour grade with vignette, FXAA/SMAA/MSAA anti-aliasing, soft round particle bursts plus drifting dust motes in the lamp light, and ambient motion (candle and lantern flicker, gentle lamp sway, dust drift) that stops under reduced motion. Settings → **Graphics** offers a quality preset (Auto, chosen from the detected GPU where software renderers get Low and touch devices are capped at Balanced; Low; Balanced; High; Ultra), a render scale (50–200% of the preset's; pixel ratio is capped at 1, 1.5 and 2 for Low, Balanced and High/Ultra), an override per category — shadows, ambient occlusion, bloom, colour grade, anti-aliasing, reflections, surface detail, particles, ambient motion — defaulting to "From preset (…)" (choosing a preset clears overrides), adaptive resolution (steps the resolution down to 60% when frames are slow and back up when fast) and a frame-rate readout (bottom-left, never over controls), plus a summary line with the GPU name, cost and pixel size. Changes apply immediately (the active preset is mirrored in `body[data-gfx-preset]`), are stored in the save document's `settings.gfx` (older saves carry their quality tier over), and the panel is localized for en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT from the browser language. If post-processing cannot be built the game renders without it and the panel says so; without WebGL the panel notes that graphics settings have no effect.
+
 ### Camera and motion
 
 - Choose orthographic or low-distortion perspective according to depth requirements; expose framing constants rather than magic offsets.
@@ -158,7 +162,8 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 - `bootstrap`: host handshake, capability detection, asset manifest, lifecycle.
 - `rules`: pure deterministic state transitions, legality, scoring, seeded random stream.
 - `session`: local or hosted commands, snapshots, prediction policy, reconnect, replay.
-- `render`: Three.js scene graph, semantic entity views, camera, lighting, VFX, quality.
+- `render`: Three.js scene graph, semantic entity views, camera, lighting, VFX, quality (js/render3d.js; post-processing addons vendored from the same three.js r160 under vendor/three/addons/, resolved through the page's import map).
+- `gfx`: pure graphics quality model (js/gfx.js): presets, per-category overrides, GPU detection, cost summary and the localized Graphics panel strings.
 - `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror.
 - `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
 - `content`: versioned levels, themes, tutorials, validation metadata.

@@ -15,7 +15,10 @@
   var DEFAULT_SETTINGS = {
     music: 0.6, effects: 0.9, ambience: 0.5, voice: 0.8,
     muted: false, captions: false,
-    graphicsTier: 'auto',       // auto | low | medium | high
+    // Graphics (see js/gfx.js): preset auto|low|balanced|high|ultra, render
+    // scale, adaptive resolution, fps readout, plus optional per-category
+    // overrides (<category>: tier; absent = from preset).
+    gfx: { preset: 'auto', render_scale: 1, adaptive: true, show_fps: false },
     theme: 'ember',
     reducedMotion: false,
     highContrast: false,
@@ -53,13 +56,24 @@
     if (!doc || typeof doc !== 'object') return null;
     if (doc.v > SAVE_VERSION) return null; // future format: don't clobber
     doc.v = SAVE_VERSION;
-    doc.settings = Object.assign({}, DEFAULT_SETTINGS, doc.settings || {});
+    var old = doc.settings || {};
+    doc.settings = Object.assign({}, DEFAULT_SETTINGS, old);
+    // Graphics moved from a single tier to the gfx object; carry the old tier over.
+    if (!old.gfx || typeof old.gfx !== 'object') {
+      var legacy = { low: 'low', medium: 'balanced', high: 'high' }[old.graphicsTier];
+      doc.settings.gfx = Object.assign({}, DEFAULT_SETTINGS.gfx, legacy ? { preset: legacy } : {});
+    } else {
+      doc.settings.gfx = Object.assign({}, DEFAULT_SETTINGS.gfx, old.gfx);
+    }
+    delete doc.settings.graphicsTier;
     doc.progress = Object.assign(defaultProgress(), doc.progress || {});
     return doc;
   }
 
   function fresh() {
-    return { v: SAVE_VERSION, settings: Object.assign({}, DEFAULT_SETTINGS), progress: defaultProgress() };
+    var settings = Object.assign({}, DEFAULT_SETTINGS);
+    settings.gfx = Object.assign({}, DEFAULT_SETTINGS.gfx);
+    return { v: SAVE_VERSION, settings: settings, progress: defaultProgress() };
   }
 
   var memoryFallback = null; // used when localStorage is unavailable

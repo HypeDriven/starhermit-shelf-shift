@@ -306,3 +306,22 @@ body.left-handed #hud-orders { left: auto; right: calc(10px + var(--sar)); }
 
 /* text must survive 200% zoom: screens scroll */
 .screen { overflow: auto; }
+
+/* ---------- Graphics settings + frame-rate readout ---------- */
+#gfx-section select { max-width: 58%; text-overflow: ellipsis; }
+#gfx-section .gfx-range { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; width: 55%; justify-content: flex-end; }
+#settings-form #gfx-section input[type="range"] { width: auto; flex: 1; min-width: 0; }
+#gfx-scale-value { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.gfx-summary { margin: 0.4rem 0 0; overflow-wrap: anywhere; }
+.gfx-note { margin: 0.3rem 0 0; color: var(--accent); }
+#fps-meter {
+  position: fixed; left: calc(8px + var(--sal)); bottom: calc(8px + var(--sab)); z-index: 60;
+  pointer-events: none; font: 12px/1.2 ui-monospace, monospace; color: var(--ink);
+  background: #0009; border-radius: 6px; padding: 2px 6px;
+}
+@media (max-width: 520px) {
+  /* stack label over control so "From preset (…)" never truncates */
+  #gfx-section > label:has(select) { flex-wrap: wrap; gap: 0.25rem 1rem; }
+  #gfx-section > label > select { max-width: none; width: 100%; }
+  #gfx-section .gfx-range { width: 60%; }
+}

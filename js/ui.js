@@ -223,10 +223,7 @@
       slider('Ambience', 'ambience'), slider('Voice cues', 'voice'),
       check('Mute all', 'muted'), check('Captions for audio cues', 'captions')
     ]));
-    host.appendChild(fs('Graphics', [
-      select('Quality tier', 'graphicsTier', [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High']]),
-      select('Color palette', 'colorPalette', [['standard', 'Standard'], ['high-visibility', 'High visibility']])
-    ]));
+    host.appendChild(buildGraphics(ctx, select('Color palette', 'colorPalette', [['standard', 'Standard'], ['high-visibility', 'High visibility']])));
     host.appendChild(fs('Accessibility', [
       check('Reduced motion', 'reducedMotion'),
       check('High contrast', 'highContrast'),
@@ -248,6 +245,93 @@
       class: 'btn danger', onclick: () => ctx.resetSave()
     }, [document.createTextNode('Erase all local progress')]);
     host.appendChild(fs('Data', [danger]));
+  }
+
+  // ---------- graphics section (quality model in js/gfx.js) ----------
+  // Stable ids for tests: #gfx-preset, #gfx-scale, #gfx-<category>, #gfx-adaptive,
+  // #gfx-fps, #gfx-summary, #gfx-note. Every control applies live and persists.
+  function buildGraphics(ctx, paletteRow) {
+    const G = ctx.gfx;
+    const t = G.strings(navigator.language);
+    const s = ctx.saveDoc.settings;
+    if (!s.gfx || typeof s.gfx !== 'object') s.gfx = Object.assign({}, G.DEFAULTS);
+    const section = el('fieldset', { id: 'gfx-section' });
+    let timer = 0;
+
+    function info() { return ctx.graphicsInfo ? ctx.graphicsInfo() : null; }
+    function commit(rebuild) {
+      ctx.applySettings();
+      ctx.persist();
+      if (rebuild) render();
+      // pixel size/post chain settle on the next frames
+      requestAnimationFrame(() => requestAnimationFrame(updateSummary));
+    }
+    function updateSummary() {
+      const sum = section.querySelector('#gfx-summary');
+      const note = section.querySelector('#gfx-note');
+      if (!sum) return;
+      const i = info();
+      const r = i ? i.resolved : G.resolve(s.gfx, 'balanced');
+      sum.textContent = [i ? (i.gpu || t.unknownGpu) : t.unknownGpu, G.describe(r, i ? i.pixels : null, t)].join(' · ');
+      const msg = !i ? t.noRenderer : i.postFailed ? t.postFailed : '';
+      note.textContent = msg;
+      note.hidden = !msg;
+    }
+    function row(labelText, control, id) {
+      return el('label', { for: id }, [document.createTextNode(labelText), control]);
+    }
+    function render() {
+      section.innerHTML = '';
+      clearInterval(timer);
+      const g = s.gfx;
+      const i = info();
+      const detected = i ? i.detected : 'balanced';
+      const eff = G.resolve(g, detected).preset;
+      section.appendChild(el('legend', { text: t.legend }));
+
+      const presetSel = el('select', { id: 'gfx-preset', 'data-gfx': 'preset',
+        onchange: e => { s.gfx = G.choosePreset(s.gfx, e.target.value); commit(true); } },
+      [el('option', { value: 'auto', text: t.auto.replace('{tier}', t.presets[detected]) })]
+        .concat(G.PRESETS.map(p => el('option', { value: p, text: t.presets[p] }))));
+      presetSel.value = G.PRESETS.indexOf(g.preset) >= 0 ? g.preset : 'auto';
+      section.appendChild(row(t.quality, presetSel, 'gfx-preset'));
+
+      const pct = Math.round((Number(g.render_scale) || 1) * 100);
+      const scaleVal = el('output', { id: 'gfx-scale-value', for: 'gfx-scale', text: pct + '%' });
+      const scale = el('input', { id: 'gfx-scale', type: 'range', min: 50, max: 200, step: 5, value: pct, 'data-gfx': 'render_scale',
+        oninput: e => { scaleVal.textContent = e.target.value + '%'; s.gfx.render_scale = +e.target.value / 100; commit(false); } });
+      section.appendChild(row(t.renderScale, el('span', { class: 'gfx-range' }, [scale, scaleVal]), 'gfx-scale'));
+
+      for (const cat of Object.keys(G.CATEGORIES)) {
+        const tiers = G.CATEGORIES[cat];
+        const sel = el('select', { id: 'gfx-' + cat, 'data-gfx-cat': cat,
+          onchange: e => {
+            if (e.target.value === 'preset') delete s.gfx[cat]; else s.gfx[cat] = e.target.value;
+            commit(false);
+          } },
+        [el('option', { value: 'preset', text: t.fromPreset.replace('{tier}', t.tiers[G.presetTier(eff, cat)]) })]
+          .concat(tiers.map(v => el('option', { value: v, text: t.tiers[v] }))));
+        sel.value = tiers.indexOf(g[cat]) >= 0 ? g[cat] : 'preset';
+        section.appendChild(row(t.cats[cat], sel, 'gfx-' + cat));
+      }
+
+      const box = (id, key, label) => {
+        const c = el('input', { id, type: 'checkbox', 'data-gfx': key,
+          onchange: e => { s.gfx[key] = e.target.checked; commit(false); } });
+        c.checked = key === 'adaptive' ? g.adaptive !== false : !!g[key];
+        return row(label, c, id);
+      };
+      section.appendChild(box('gfx-adaptive', 'adaptive', t.adaptive));
+      section.appendChild(box('gfx-fps', 'show_fps', t.showFps));
+      section.appendChild(paletteRow);
+      section.appendChild(el('p', { id: 'gfx-summary', class: 'mini gfx-summary', 'aria-live': 'polite' }));
+      section.appendChild(el('p', { id: 'gfx-note', class: 'mini gfx-note', role: 'status', hidden: 'hidden' }));
+      updateSummary();
+      // keep the summary current (adaptive resolution) while the panel is open
+      timer = setInterval(() => { if (!section.isConnected) clearInterval(timer); else updateSummary(); }, 1000);
+    }
+    render();
+    return section;
   }
 
   // ---------- help ----------
