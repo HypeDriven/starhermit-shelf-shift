@@ -345,7 +345,11 @@
       ['Triples', 'Three identical objects on the same shelf row clear away and count toward orders.'],
       ['The counter', 'New stock arrives on the front counter. If a delivery finds no free staging cell, the round is lost.'],
       ['Scoring', 'Triples score 100 points plus streak bonuses. Winning adds bonuses for spare space, speed, and staying under par.'],
-      ['Keyboard', 'Arrow keys move the focus ring · Enter select/place · Esc cancel · U undo · H hint · C camera · P pause.'],
+      ['Keyboard', ['up', 'down', 'left', 'right'].map(k => ctx.platform.keyLabel(k)).join(' ') + ' move the focus ring · ' +
+        ctx.platform.keyLabel('confirm') + ' select/place · ' + ctx.platform.keyLabel('cancel') + ' cancel · ' +
+        ctx.platform.keyLabel('undo') + ' undo · ' + ctx.platform.keyLabel('hint') + ' hint · ' +
+        ctx.platform.keyLabel('camera') + ' camera · ' + ctx.platform.keyLabel('pause') + ' pause · ' +
+        ctx.platform.keyLabel('skip') + ' skip animations.'],
       ['Gamepad', 'Stick or D-pad moves focus · ' + padLabel(s, 'confirm') + ' confirm · ' + padLabel(s, 'cancel') + ' cancel · ' + padLabel(s, 'pause') + ' pause · ' + padLabel(s, 'undo') + ' undo.']
     ];
     host.innerHTML = '';

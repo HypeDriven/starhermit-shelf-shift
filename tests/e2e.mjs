@@ -23,14 +23,10 @@
  *
  * Serving: the repo ships `server.js` (the StarHermit authoritative script
  * declared by starhermit.txt) but, per the game's own spec (§6 / §packaging),
- * "ordinary practice can run locally and offline after initial load". When
- * `/api/v1/time` is unavailable the client degrades to its documented
- * offline path (`hosted=false`) with zero console noise. So, mirroring the
- * sibling titles (picture-logic/blockstead/balance-spire), this test embeds
- * a minimal node:http static server on an ephemeral port and answers /api/*
- * probes with 200 `{}` so the platform adapter degrades cleanly. If the UI
- * ever requires the real backend this block can be swapped for spawning
- * `server.js`; today it is not needed (the win is a local practice round).
+ * "ordinary practice can run locally and offline after initial load". With
+ * no launch token (`hosted=false`) the client makes no own-server calls, so
+ * this test embeds a minimal node:http static server (no /api routes) on an
+ * ephemeral port and fails on any same-origin /api or /ws request.
  *
  * Input mode: the game's primary playfield is a Three.js canvas, but the DOM
  * board-mirror (`#board-mirror`, "Visible board controls (DOM)") is a
@@ -82,13 +78,6 @@ const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/') p = '/index.html';
-    // No StarHermit backend here: answer API probes with empty JSON (200) so
-    // the platform adapter degrades to offline mode without console noise.
-    if (p.startsWith('/api/')) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end('{}');
-      return;
-    }
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
     const data = await readFile(file);
@@ -218,12 +207,16 @@ async function runPass(browser, name, ctxOpts, { full }) {
   page.on('console', (m) => {
     if (m.type() !== 'error' || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
-    if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
+    if (/Failed to load resource/.test(m.text()) && /\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
   });
   page.on('response', (r) => {
     const p = r.url();
-    if (r.status() >= 400 && !/\/api\/|\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
+    if (r.status() >= 400 && !/\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
+  });
+  page.on('request', (req) => {
+    const u = new URL(req.url());
+    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
   });
 
   try {

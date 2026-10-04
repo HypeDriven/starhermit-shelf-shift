@@ -19,7 +19,7 @@ const $ = id => document.getElementById(id);
 let saveDoc = Store.load();
 
 // ---------- StarHermit platform adapter (inert without a launch token) ----------
-const platform = Platform.create({ onSync: updateSyncStatus });
+const platform = Platform.create({ onSync: updateSyncStatus, onSignedOut: onPlatformSignedOut });
 
 // ---------- session ----------
 const session = {
@@ -40,18 +40,16 @@ const session = {
 
 let renderer = null;
 let screenStack = [];
-let devServer = false;    // the repo's own server.js answered /api/v1/time (local dev)
-let serverOffsetMs = 0;   // serverNow ≈ Date.now() + offset
 let selected = null;      // loc of lifted item
 let cursor = null;        // keyboard/gamepad focus loc
 let confirmTarget = null; // pending target when confirmMoves is on
 let pausedByHide = false; // round was auto-paused by the tab going hidden
 
 // ---------- tiny helpers ----------
-function now() { return Date.now() + serverOffsetMs; }
 function persist() {
   const wrapped = Store.save(saveDoc); // localStorage stays the offline cache
   platform.queueCloudSave(wrapped);    // cloud is a mirror (hosted only)
+  platform.pushSettings(saveDoc.settings); // preferences → platform settings KV
 }
 // Small sync/account line under the title (hosted only; hidden in local play).
 function updateSyncStatus() {
@@ -62,6 +60,30 @@ function updateSyncStatus() {
   const text = [name ? 'Playing as ' + name : null, label].filter(Boolean).join(' · ');
   el.textContent = text;
   el.hidden = !text;
+  const L = window.SSShStrings.strings(navigator.language);
+  $('btn-signin').textContent = L.signIn;
+  $('btn-invite').textContent = L.invite;
+  $('btn-signin').classList.toggle('hidden', !platform.canSignIn());
+  $('btn-invite').classList.toggle('hidden', !platform.inviteLink());
+}
+function onPlatformSignedOut() {
+  toast(window.SSShStrings.strings(navigator.language).signedOut, 3600);
+}
+async function copyInviteLink() {
+  const L = window.SSShStrings.strings(navigator.language);
+  const link = platform.inviteLink();
+  if (!link) return;
+  try { await navigator.clipboard.writeText(link); toast(L.copied); }
+  catch (e) { toast(L.copyFailed + ': ' + link, 6000); }
+}
+$('btn-signin').addEventListener('click', () => platform.signIn());
+$('btn-invite').addEventListener('click', () => { copyInviteLink(); });
+// Hosted start: cloud save (remote wins), then settings KV (platform wins),
+// then the player's keyboard bindings.
+async function hostedBoot() {
+  await pullCloudSave();
+  if (await platform.syncSettings(saveDoc.settings)) { Store.save(saveDoc); applySettings(); }
+  await platform.loadControls();
 }
 // Remote-preferred whole-doc load: the cloud copy wins; localStorage is
 // rewritten underneath it so offline play continues from the same state.
@@ -126,7 +148,6 @@ document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click'
 // ---------- settings ----------
 function applySettings() {
   const s = saveDoc.settings;
-  telemetrySettingsChanged();
   document.body.classList.toggle('reduced-motion', !!s.reducedMotion);
   document.body.classList.toggle('high-contrast', !!s.highContrast);
   document.body.classList.toggle('large-text', !!s.largeText);
@@ -153,54 +174,16 @@ function totalStars() {
   return Object.values(saveDoc.progress.journeyStars).reduce((a, b) => a + b, 0);
 }
 
-// ---------- own dev server (local play only; never probed on-platform) ----------
-// The repo's server.js (starhermit.txt `server=server.js`) provides time sync,
-// funnel telemetry, and the replay-verified leaderboard for local development.
-// On the platform there is no per-game time/telemetry route, so hosted sessions
-// (launch token present) never probe these — no fabricated calls, no 404 noise.
-async function detectDevServer() {
-  if (platform.hosted()) return;
-  try {
-    const t0 = Date.now();
-    const res = await fetch('/api/v1/time', { signal: AbortSignal.timeout(2500) });
-    const t1 = Date.now();
-    if (!res.ok) return;
-    const data = await res.json();
-    if (typeof data.now === 'number') {
-      devServer = true;
-      serverOffsetMs = data.now - Math.round((t0 + t1) / 2); // round-trip adjusted
-    }
-  } catch (e) { /* offline / static hosting: fully playable */ }
-}
-function serverNow() { return Date.now() + serverOffsetMs; }
-function telemetry(event, data) {
-  if (!devServer) return;
-  try {
-    fetch('/api/v1/telemetry', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ event, data, sessionId: session.sessionId, t: serverNow() })
-    }).catch(() => {});
-  } catch (e) {}
-}
-let settingsTelemetryTimer = 0;
-function telemetrySettingsChanged() {
-  clearTimeout(settingsTelemetryTimer);
-  settingsTelemetryTimer = setTimeout(() => telemetry('settings_change', {}), 5000);
-}
-window.addEventListener('error', e => {
-  telemetry('error', { category: (e && e.message || 'unknown').slice(0, 80) });
-});
-
 // ---------- daily ----------
 let dailyCfg = null;
 function refreshDaily() {
-  const ds = Content.utcDateString(serverNow());
+  const ds = Content.utcDateString(Date.now());
   dailyCfg = Content.dailyConfig(ds);
 }
 function dailyCountdownText() {
-  const n = new Date(serverNow());
+  const n = new Date(Date.now());
   const next = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1);
-  const ms = next - serverNow();
+  const ms = next - Date.now();
   const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
   return 'new in ' + h + 'h ' + m + 'm';
 }
@@ -349,7 +332,6 @@ function startRound(cfg, mode) {
   if (saveDoc.settings.boardMirror) $('board-mirror').classList.remove('hidden');
   if (cfg.intro) message(cfg.intro, 6000);
   announce('Round started. ' + (cfg.name || mode) + '. Fill the orders on the left.');
-  telemetry('round_start', { mode, cfg: cfg.id, seed: cfg.seed });
 }
 
 function endActiveSession() {
@@ -608,7 +590,6 @@ function finishRound(state) {
     lbRank = submitEntry(entry);
     bestImproved = lbRank === 0;
   }
-  telemetry('round_end', { mode: session.mode, won, score: state.score.total, moves: state.moves });
 
   const nextCfg = nextLevelCfg();
   const showResults = () => {
@@ -669,7 +650,7 @@ function makeEntry(state) {
     won: !!(state.terminal && state.terminal.won),
     assists: session.assists, durationMs: Math.round(session.elapsedMs),
     invalid: session.invalid, sessionId: session.sessionId,
-    date: new Date(serverNow()).toISOString().slice(0, 10),
+    date: new Date(Date.now()).toISOString().slice(0, 10),
     cfgSnapshot: Rules.clone(state.cfg),
     log: Rules.clone(session.log),
     finalHash: Rules.hashState(state),
@@ -695,19 +676,6 @@ function submitEntry(entry) {
   boards.entries.push(entry);
   if (boards.entries.length > 400) boards.entries = Store.sortEntries(boards.entries).slice(0, 400);
   Store.saveBoards(boards);
-  // The repo's own backend (when the platform hosts it per starhermit.txt)
-  // re-verifies the replay authoritatively; carry the launch token so it can
-  // authenticate the submitter. When the backend is absent (404 / offline)
-  // the local record above is the graceful fallback — silent, no console noise.
-  if (platform.hosted() || devServer) {
-    try {
-      fetch('/api/v1/leaderboard', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...platform.authHeaders() },
-        body: JSON.stringify(entry)
-      }).catch(() => {});
-    } catch (e) {}
-  }
   const same = Store.sortEntries(boards.entries.filter(e => e.board === entry.board));
   return same.indexOf(entry);
 }
@@ -770,7 +738,6 @@ function startLesson(i) {
   buildMirror();
   if (saveDoc.settings.boardMirror) $('board-mirror').classList.remove('hidden');
   announce('Lesson ' + (i + 1) + ': ' + lesson.title + '. ' + lesson.text);
-  telemetry('tutorial_step', { lesson: lesson.id });
 }
 function lessonProgress(events, action) {
   const L = session.lesson;
@@ -908,7 +875,8 @@ function togglePause() {
 
 document.addEventListener('keydown', e => {
   const inField = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName || '');
-  if (e.key === 'Escape') {
+  const action = platform.actionFor(e.code);
+  if (action === 'cancel') {
     if (screenStack[screenStack.length - 1] === 'settings' || screenStack[screenStack.length - 1] === 'help') { back(); return; }
     onCancel();
     return;
@@ -921,25 +889,22 @@ document.addEventListener('keydown', e => {
   const onMirrorCell = document.activeElement && document.activeElement.dataset &&
     document.activeElement.dataset.loc && document.activeElement.closest('#board-mirror');
   if (onMirrorCell) {
-    if (e.key === 'Enter' || e.key === ' ') return;
-    if (/^Arrow(Left|Right|Up|Down)$/.test(e.key)) {
+    if (action === 'confirm') return;
+    if (action === 'left' || action === 'right' || action === 'up' || action === 'down') {
       e.preventDefault();
-      moveCursor(e.key.slice(5).toLowerCase());
+      moveCursor(action);
       focusMirrorCell(cursor);
       return;
     }
   }
-  switch (e.key) {
-    case 'ArrowLeft': e.preventDefault(); moveCursor('left'); break;
-    case 'ArrowRight': e.preventDefault(); moveCursor('right'); break;
-    case 'ArrowUp': e.preventDefault(); moveCursor('up'); break;
-    case 'ArrowDown': e.preventDefault(); moveCursor('down'); break;
-    case 'Enter': case ' ': e.preventDefault(); onConfirm(); break;
-    case 'u': case 'U': doUndo(); break;
-    case 'h': case 'H': doHint(); break;
-    case 'p': case 'P': togglePause(); break;
-    case 's': case 'S': renderer && renderer.skipAll(); break;
-    case 'c': case 'C': if (renderer) { renderer.setCursor(null); cursor = null; renderer.resize(); } break;
+  switch (action) {
+    case 'left': case 'right': case 'up': case 'down': e.preventDefault(); moveCursor(action); break;
+    case 'confirm': e.preventDefault(); onConfirm(); break;
+    case 'undo': doUndo(); break;
+    case 'hint': doHint(); break;
+    case 'pause': togglePause(); break;
+    case 'skip': renderer && renderer.skipAll(); break;
+    case 'camera': if (renderer) { renderer.setCursor(null); cursor = null; renderer.resize(); } break;
   }
 });
 
@@ -1006,21 +971,19 @@ $('btn-camera').addEventListener('click', () => { if (renderer) { cursor = null;
 $('btn-restart').addEventListener('click', () => {
   if (!session.cfg) return;
   const cfg = session.cfg;
-  telemetry('retry', { cfg: cfg.id });
   startRound(cfg, session.mode);
 });
 $('btn-leave').addEventListener('click', () => {
   if (session.active && session.state && !session.state.terminal)
-    Rules.applyCommand(session.state, { type: 'resign' }); // recorded via telemetry only
+    Rules.applyCommand(session.state, { type: 'resign' }); // ends the round as a loss
   endActiveSession();
-  telemetry('quit', { cfg: session.cfg && session.cfg.id, tick: session.state && session.state.tick });
   goTitle();
 });
 $('btn-pause-settings').addEventListener('click', () => { UI.buildSettingsForm($('settings-form'), ctx); show('settings'); });
 $('btn-pause-help').addEventListener('click', () => { UI.buildHelp($('help-body'), ctx); show('help'); });
 
 // ---------- results buttons ----------
-$('btn-results-retry').addEventListener('click', () => { telemetry('retry', { cfg: session.cfg.id }); startRound(session.cfg, session.mode); });
+$('btn-results-retry').addEventListener('click', () => { startRound(session.cfg, session.mode); });
 $('btn-results-menu').addEventListener('click', () => { endActiveSession(); goTitle(); });
 $('btn-results-next').addEventListener('click', () => {
   const n = nextLevelCfg();
@@ -1156,12 +1119,11 @@ function boot() {
   document.addEventListener('pointerdown', kick);
   document.addEventListener('keydown', kick);
   // Hosted iff a launch token was read: authenticate, pull the cloud save
-  // (remote wins), and show account/sync status. Otherwise probe only for the
-  // repo's own dev server (time sync / verified boards) — never on-platform.
+  // (remote wins), and show account/sync status. The game never calls its own
+  // server routes; the daily uses the local clock.
   platform.start();
   updateSyncStatus();
-  if (platform.hosted()) void pullCloudSave();
-  detectDevServer().then(() => { if (devServer) refreshDaily(); });
+  if (platform.hosted()) void hostedBoot();
 }
 
 boot();

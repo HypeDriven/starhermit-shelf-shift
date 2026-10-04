@@ -5,12 +5,12 @@
  * the fragment, scoped refresh, profile, cloud saves, read-only leaderboard)
  * and drives headless Chrome through boot + settings change, asserting:
  *   - the fragment token is read once and stripped
- *   - Bearer auth on refresh / profile / cloud PUT (with the re-minted token)
+ *   - Bearer auth on profile / settings / cloud PUT (slot game:<slug>)
  *   - the account nickname (never the username) in the title/profile UI
  *   - the cloud PUT body is a valid stored zip of the checksummed save doc
  *     (also written to /tmp/shelf-shift-cloud-save.zip for external checks)
  *   - the platform leaderboard renders read-only with resolved nicknames
- *   - NO /api/v1/time or /api/v1/telemetry calls (fabricated hosted routes
+ *   - NO /api/v1/time, /api/v1/telemetry or /api/v1/leaderboard calls (own-server routes
  *     must not be probed on-platform)
  *   - zero JS page errors
  * Run: node tests/hosted-smoke.mjs
@@ -31,10 +31,10 @@ const MIME = {
 const USER = '2712e04e-461b-4d23-81ae-e40b429128a8'; // starhermit.txt owner
 const received = []; // {path, method, auth}
 let putBody = null;
+const patchBodies = [];
 
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const TOKEN = b64u({ alg: 'none' }) + '.' + b64u({ sub: USER, game_scope: 'shelf-shift' }) + '.sig';
-const TOKEN2 = b64u({ alg: 'none' }) + '.' + b64u({ sub: USER, game_scope: 'shelf-shift', iat: 2 }) + '.sig';
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -44,11 +44,16 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(code, { 'content-type': type });
       res.end(typeof body === 'string' ? body : JSON.stringify(body));
     };
-    if (url.pathname === '/api/v1/games/shelf-shift/launch-token' && req.method === 'POST')
-      return j(200, { token: TOKEN2 }); // re-mint
+    if (url.pathname === '/api/v1/games/shelf-shift/settings') {
+      let b = '';
+      for await (const c of req) b += c;
+      if (req.method === 'PATCH') patchBodies.push(JSON.parse(b).settings);
+      return j(200, { settings: { largeText: true } });
+    }
+    if (url.pathname === '/api/v1/games/shelf-shift/controls') return j(200, { actions: [] });
     if (url.pathname === `/api/v1/users/${USER}/profile`)
       return j(200, { id: USER, username: 'mira_x', nickname: 'Mira' });
-    if (url.pathname === '/api/v1/me/cloud-saves/shelf-shift') {
+    if (url.pathname === '/api/v1/me/cloud-saves/game%3Ashelf-shift') {
       if (req.method === 'PUT') {
         let b = '';
         for await (const c of req) b += c;
@@ -57,9 +62,9 @@ const server = http.createServer(async (req, res) => {
       }
       return j(404, { error: 'none' }); // no remote save yet
     }
-    if (url.pathname === '/api/v1/games/shelf-shift') return j(200, { leaderboardId: 'lb-1' });
+    if (url.pathname === '/api/v1/games/shelf-shift/leaderboards') return j(200, [{ id: 'lb-1', key: 'score' }]);
     if (url.pathname === '/api/v1/leaderboards/lb-1/entries')
-      return j(200, { entries: [{ userId: USER, score: 2345 }] });
+      return j(200, { items: [{ userId: USER, score: 2345, rank: 1 }], total: 1 });
     return j(404, { error: 'nope' }); // incl. /api/v1/time, /api/v1/telemetry, /api/v1/leaderboard
   }
   let p = decodeURIComponent(url.pathname);
@@ -113,25 +118,28 @@ check('profile fetched with launch token',
 check('title shows account nickname',
   await poll(() => page.$eval('#platform-status', el => !el.hidden && /Playing as Mira/.test(el.textContent))));
 
-// the immediate re-mint must land before the first cloud mirror PUT
-check('refresh POST on scoped route with Bearer',
-  await poll(() => received.some(r => r.path === '/api/v1/games/shelf-shift/launch-token' && r.method === 'POST' && r.auth === 'Bearer ' + TOKEN)));
+check('platform setting applied (large text)',
+  await poll(() => page.evaluate(() => document.body.classList.contains('large-text'))));
+check('invite button shown when signed in, sign-in hidden',
+  await page.isVisible('#btn-invite') && !(await page.isVisible('#btn-signin')));
 
 // a settings change persists → debounced cloud PUT with the re-minted token
 await page.click('#btn-settings');
 await page.waitForSelector('.screen[data-name="settings"].active');
 const mute = page.locator('#settings-form label:has-text("Mute all") input[type="checkbox"]');
 if (!(await mute.isChecked())) await mute.check();
-check('cloud PUT with re-minted token',
-  await poll(() => putBody !== null && received.some(r => r.method === 'PUT' && r.auth === 'Bearer ' + TOKEN2), 10000));
+check('cloud PUT on game:<slug> with Bearer',
+  await poll(() => putBody !== null && received.some(r => r.method === 'PUT' && r.auth === 'Bearer ' + TOKEN), 10000));
+check('settings change PATCHed to the platform KV',
+  await poll(() => patchBodies.some(b => b.muted === true)));
 
 let putOk = false;
 if (putBody && putBody.dataBase64) {
   const bytes = new Uint8Array(Buffer.from(putBody.dataBase64, 'base64'));
   await writeFile('/tmp/shelf-shift-cloud-save.zip', Buffer.from(bytes)).catch(() => {});
-  const Platform = (await import('../js/platform.js')).default;
+  const SDK = (await import('../starhermit-sdk.js')).default;
   const Store = (await import('../js/store.js')).default;
-  const wrapped = JSON.parse(new TextDecoder().decode(Platform.unzipFirstEntry(bytes)));
+  const wrapped = JSON.parse(new TextDecoder().decode(await SDK._unzip(bytes)));
   putOk = wrapped && typeof wrapped.sum === 'string' &&
     wrapped.sum === Store.checksum(wrapped.payload) &&
     JSON.parse(wrapped.payload).v === 1;
@@ -140,6 +148,7 @@ check('cloud PUT body is a valid checksummed zip save doc', putOk);
 
 check('no /api/v1/time probe on-platform', !received.some(r => r.path === '/api/v1/time'));
 check('no /api/v1/telemetry call on-platform', !received.some(r => r.path === '/api/v1/telemetry'));
+check('no own-server POST /api/v1/leaderboard', !received.some(r => r.path === '/api/v1/leaderboard'));
 await page.click('.screen[data-name="settings"] button.btn.primary.back');
 await page.waitForSelector('.screen[data-name="title"].active');
 

@@ -25,7 +25,6 @@ const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/') p = '/index.html';
-    if (p.startsWith('/api/')) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{}'); return; }
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
     const data = await readFile(file);
@@ -74,7 +73,11 @@ async function pass(browser, name, ctxOpts, touch) {
   page.on('console', (m) => {
     if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console ${m.type()}: ${m.text()}`);
   });
-  page.on('response', (r) => { if (r.status() >= 400 && !/\/api\/|favicon/.test(r.url())) errors.push(`http ${r.status()} ${r.url()}`); });
+  page.on('response', (r) => { if (r.status() >= 400 && !/favicon/.test(r.url())) errors.push(`http ${r.status()} ${r.url()}`); });
+  page.on('request', (req) => {
+    const u = new URL(req.url());
+    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
+  });
   try {
     await page.goto(BASE, { waitUntil: 'load' });
     await page.waitForFunction(() => document.body.dataset.gfxPreset);

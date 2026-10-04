@@ -10,6 +10,8 @@
 <link rel="apple-touch-icon" href="./icon.png">
 <link rel="stylesheet" href="css/style.css">
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
+<script>StarHermit.init();</script>
 </head>
 <body>
 <noscript><p class="noscript">Shelf Shift needs JavaScript to run — the boutique is rendered and simulated in your browser.</p></noscript>
@@ -68,6 +70,10 @@
         <h1 id="title-h">Shelf Shift</h1>
         <p class="tagline">A cozy boutique sorting puzzle</p>
         <p id="platform-status" class="mini" hidden></p>
+        <div class="title-account">
+          <button id="btn-signin" class="btn ghost hidden">Sign in with StarHermit</button>
+          <button id="btn-invite" class="btn ghost hidden">Invite a friend</button>
+        </div>
         <button id="btn-play" class="btn primary big">Play</button>
         <div class="title-secondary">
           <button id="btn-daily" class="btn">Daily challenge <span id="daily-countdown" class="mini"></span></button>
@@ -205,6 +211,7 @@
 <script src="js/platform.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/gfx.js"></script>
+<script src="js/sh-strings.js"></script>
 <script src="js/ui.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>

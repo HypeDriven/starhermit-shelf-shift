@@ -5,15 +5,12 @@ triples, clear requested orders, and keep the delivery counter from overflowing.
 
 ## Run
 
-Any static file server works. For the full experience (server time sync,
-verified leaderboards, canonical daily configs):
+Any static file server works (the client makes no server API calls;
+leaderboards are local):
 
 ```
-node server.js        # → http://localhost:8080/
+python3 -m http.server 8080
 ```
-
-Or with Python: `python3 -m http.server 8080` (game fully playable offline;
-leaderboards stay local).
 
 ## Play
 

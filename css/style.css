@@ -104,6 +104,8 @@ body.large-text { --font-scale: 1.25; }
 }
 .tagline { margin: 0 0 0.6rem; color: var(--ink-dim); max-width: 70ch; }
 .title-secondary { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
+.title-account { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
+.title-account:not(:has(.btn:not(.hidden))) { display: none; }
 .title-tertiary { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
 
 .card-list { display: grid; gap: 0.6rem; margin: 0.5rem 0; }
@@ -178,7 +180,7 @@ body.large-text { --font-scale: 1.25; }
   background: #1c130ef2; border: 1px solid #ffffff22; border-radius: var(--radius);
   padding: 0.6rem; max-width: 94vw; overflow: auto; max-height: 45vh;
 }
-#board-mirror.visible-mode { position: static; transform: none; margin: 1rem auto; max-height: none; }
+#board-mirror.visible-mode { position: relative; transform: none; margin: 1rem auto; max-height: none; }
 .mirror-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
 .mirror-label { font-size: 0.75em; color: var(--ink-dim); width: 5.5em; }
 .cell-btn {
@@ -324,4 +326,8 @@ body.left-handed #hud-orders { left: auto; right: calc(10px + var(--sar)); }
   #gfx-section > label:has(select) { flex-wrap: wrap; gap: 0.25rem 1rem; }
   #gfx-section > label > select { max-width: none; width: 100%; }
   #gfx-section .gfx-range { width: 60%; }
+}
+
+@media (pointer: coarse) {
+  select { min-height: 36px; }
 }
