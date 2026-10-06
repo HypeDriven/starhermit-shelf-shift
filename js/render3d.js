@@ -795,7 +795,8 @@ export function createRenderer(opts) {
   function fitCamera() {
     const sr = safeRect();
     // extra headroom at the top: the shelf unit's cap sits above the top row
-    const pad = 8, padTop = Math.min(48, sr.h * 0.08);
+    const ui = (window.UIScale && UIScale.value) || 1;
+    const pad = 8 * ui, padTop = Math.min(48 * ui, sr.h * 0.08);
     const sx = sr.x + pad, sy = sr.y + padTop, sw = Math.max(1, sr.w - pad * 2), sh = Math.max(1, sr.h - pad - padTop);
     camera.aspect = sw / sh;
     camera.setViewOffset(sw, sh, -sx, -sy, sr.W, sr.H);

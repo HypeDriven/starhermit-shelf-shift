@@ -620,7 +620,9 @@ function checkAchievements(state, won) {
       p.achievements[key] = Date.now();
       const def = Content.ACHIEVEMENTS.find(a => a.key === key);
       got.push(def);
-      setTimeout(() => { toast('🏆 ' + def.name); Audio.play('star'); }, 900 + got.length * 600);
+      // the results panel lists new achievements itself; a toast there would
+      // cover its table/buttons on short screens, so only toast elsewhere
+      setTimeout(() => { if ($('app').dataset.screen !== 'results') toast('🏆 ' + def.name); Audio.play('star'); }, 900 + got.length * 600);
     }
   };
   if (state.score.clears > 0) unlock('first-clear');
@@ -1081,7 +1083,8 @@ window.addEventListener('resize', () => renderer && renderer.resize());
     refit = requestAnimationFrame(() => {
       const b = $('lesson-banner');
       const h = b.classList.contains('hidden') ? 0 : b.getBoundingClientRect().height;
-      $('app').style.setProperty('--banner-h', Math.round(h) + 'px');
+      // visual px → layout px inside the zoomed HUD (ui-scale.js)
+      $('app').style.setProperty('--banner-h', Math.round(h / ((window.UIScale && UIScale.value) || 1)) + 'px');
       if (renderer) renderer.resize();
     });
   };
