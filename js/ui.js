@@ -193,7 +193,7 @@
     for (const a of r.newAchievements || [])
       ach.appendChild(el('li', { text: '🏆 ' + a.name + ' — ' + a.desc }));
     document.getElementById('results-compare').textContent =
-      [r.lbRank != null ? 'Leaderboard rank #' + (r.lbRank + 1) : null,
+      [r.lbRank != null ? 'Local board rank #' + (r.lbRank + 1) : null,
        r.bestImproved ? 'New personal best!' : null,
        r.verified === true ? 'Score verified by replay.' : r.verified === false ? 'Score could not be verified (casual).' : null]
         .filter(Boolean).join(' · ');

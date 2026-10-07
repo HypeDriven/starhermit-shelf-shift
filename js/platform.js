@@ -118,10 +118,25 @@
       return (controls[action] || []).map(c => c.replace(/^Key|^Digit|^Arrow/, '')).join('/');
     }
 
-    // ---- platform leaderboard (read-only; resolve userIds to nicknames) ----
+    // ---- platform leaderboard: post a finished run (score-script.js) ----
+    // Resolves { posted, rank } — rank on the high-score board, or null.
+    async function submitScore(total) {
+      if (!hosted()) return { posted: false, rank: null };
+      try {
+        const keys = await sh.submitScores({ 'high-score': total });
+        if (!keys || keys.indexOf('high-score') < 0) return { posted: false, rank: null };
+        try {
+          const r = await sh.leaderboard('high-score', { pageSize: 100 });
+          const me = (r.items || []).find(i => i.userId === sh.userId);
+          return { posted: true, rank: me ? me.rank : null };
+        } catch (e) { return { posted: true, rank: null }; }
+      } catch (e) { return { posted: false, rank: null }; }
+    }
+
+    // ---- high-score board entries (resolve userIds to nicknames) ----
     async function fetchPlatformLeaderboard(pageSize) {
       if (!hosted()) return null;
-      const r = await sh.leaderboard(null, { pageSize: pageSize || 10 }).catch(() => null);
+      const r = await sh.leaderboard('high-score', { pageSize: pageSize || 10 }).catch(() => null);
       if (!r || !r.board) return null; // no platform board: local records only
       const out = [];
       for (const e of (r.items || []).slice(0, pageSize)) {
@@ -152,7 +167,7 @@
       canSignIn: () => !!(sh && sh.canSignIn()),
       signIn: () => !!(sh && sh.signIn()),
       inviteLink: () => (hosted() ? sh.inviteLink() : null),
-      loadCloudSave, queueCloudSave, flushCloudSave, fetchPlatformLeaderboard,
+      loadCloudSave, queueCloudSave, flushCloudSave, fetchPlatformLeaderboard, submitScore,
       syncSettings, pushSettings,
       loadControls, actionFor, keyLabel, get controls() { return controls; }
     };

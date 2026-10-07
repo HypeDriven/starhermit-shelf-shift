@@ -132,6 +132,7 @@ test('standalone: inert, no network', async () => {
   p.pushSettings({ music: 1 });
   await p.loadControls();
   assert.strictEqual(await p.fetchPlatformLeaderboard(10), null);
+  assert.deepStrictEqual(await p.submitScore(300), { posted: false, rank: null });
   assert.strictEqual(p.actionFor('ArrowLeft'), 'left');
   assert.strictEqual(p.canSignIn(), false, 'no sign-in button off-platform');
   assert.strictEqual(calls.length, 0);

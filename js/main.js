@@ -600,10 +600,29 @@ function finishRound(state) {
     });
     setHudVisible(false);
     show('results');
+    postToLeaderboard(state);
   };
   if (renderer && renderer.isBusy() && !saveDoc.settings.reducedMotion) {
     setTimeout(showResults, 650);
   } else showResults();
+}
+
+// Signed in: every finished Journey, Daily, Challenge or Score chase run
+// posts its total to the platform high-score board; the results screen
+// shows the player's rank there.
+function postToLeaderboard(state) {
+  const line = $('results-lb');
+  if (!platform.hosted() || !['journey', 'daily', 'challenge', 'score'].includes(session.mode)) {
+    line.hidden = true; return;
+  }
+  const L = window.SSShStrings.strings(navigator.language);
+  line.hidden = false;
+  line.textContent = L.lbPosting;
+  platform.submitScore(state.score.total).then(r => {
+    if (session.state !== state) return;
+    line.textContent = !r.posted ? L.lbNotPosted
+      : r.rank ? L.lbRank.replace('{rank}', r.rank) : L.lbPosted;
+  });
 }
 
 function nextLevelCfg() {
@@ -1011,8 +1030,8 @@ function openMode(mode) {
 }
 let lbSeq = 0;
 function showLeaderboard(tab) {
-  // Local records render immediately; the platform's global board is
-  // read-only and arrives when the platform hosts one (leaderboardId).
+  // Local records render immediately; the platform's high-score board
+  // arrives when signed in.
   UI.buildLeaderboard($('lb-body'), ctx, leaderboardEntries(tab), tab, null);
   show('leaderboard');
   if (!platform.hosted()) return;
