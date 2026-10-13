@@ -1249,8 +1249,8 @@ export function createRenderer(opts) {
     camera.lookAt(camTarget);
     const key = currentPostKey();
     if (key !== postKey) { postKey = key; buildPost(); }
-    if (composer) composer.render(dt);
-    else renderer.render(scene, camera);
+    if (composer) (globalThis.GameOptions ? globalThis.GameOptions.draw(composer.renderer, () => composer.render(dt)) : composer.render(dt));
+    else (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera));
   }
 
   function setRunning(on) { running = !!on; }
