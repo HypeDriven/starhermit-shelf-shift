@@ -132,8 +132,46 @@
     });
   }
 
+  // Merge a cloud doc with this device's (cloud-save conflicts, boot load):
+  // nothing is dropped — every finished lesson, the best stars/score per stage,
+  // challenge and daily, every achievement (earliest unlock), the larger stats.
+  // Preferences, profile name and cosmetics are this device's.
+  function mergeDocs(remote, local) {
+    var r = migrate(JSON.parse(JSON.stringify(remote || fresh()))) || fresh();
+    var l = migrate(JSON.parse(JSON.stringify(local || fresh()))) || fresh();
+    var rp = r.progress, lp = l.progress;
+    var maxMap = function (a, b) {
+      var out = Object.assign({}, a || {});
+      Object.keys(b || {}).forEach(function (k) { out[k] = Math.max(Number(out[k]) || 0, Number(b[k]) || 0); });
+      return out;
+    };
+    var ach = Object.assign({}, rp.achievements || {});
+    Object.keys(lp.achievements || {}).forEach(function (k) {
+      ach[k] = ach[k] ? Math.min(ach[k], lp.achievements[k]) : lp.achievements[k];
+    });
+    var stats = {};
+    Object.keys(Object.assign({}, rp.stats, lp.stats)).forEach(function (k) {
+      stats[k] = Math.max(Number(rp.stats && rp.stats[k]) || 0, Number(lp.stats && lp.stats[k]) || 0);
+    });
+    var progress = Object.assign({}, rp, lp, {
+      tutorialDone: Object.assign({}, rp.tutorialDone, lp.tutorialDone),
+      journeyStars: maxMap(rp.journeyStars, lp.journeyStars),
+      journeyBest: maxMap(rp.journeyBest, lp.journeyBest),
+      challengeBest: maxMap(rp.challengeBest, lp.challengeBest),
+      dailiesDone: maxMap(rp.dailiesDone, lp.dailiesDone),
+      endlessBest: Math.max(Number(rp.endlessBest) || 0, Number(lp.endlessBest) || 0),
+      achievements: ach,
+      stats: stats,
+      cosmetics: Object.assign({}, rp.cosmetics, lp.cosmetics)
+    });
+    var out = Object.assign({}, r, l, { v: SAVE_VERSION, settings: l.settings, progress: progress });
+    if (!l.profileName && r.profileName) out.profileName = r.profileName;
+    return out;
+  }
+
   return {
     SAVE_VERSION: SAVE_VERSION,
+    mergeDocs: mergeDocs,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     load: load, save: save, fresh: fresh, migrate: migrate,
     checksum: checksum, wrap: wrap, unwrap: unwrap,

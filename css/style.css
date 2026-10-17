@@ -96,7 +96,7 @@ body.large-text { --font-scale: 1.25; }
   pointer-events: auto;
 }
 .screen.active { display: flex; }
-.screen.overlay { background: #140d0ab0; backdrop-filter: blur(3px); }
+.screen.overlay { background: #140d0ab0; backdrop-filter: blur(3px); z-index: 40; } /* above the HUD and board controls during a round */
 
 .title-card { text-align: center; display: grid; gap: 0.9rem; justify-items: center; }
 .title-card h1 {
@@ -183,6 +183,13 @@ body.large-text { --font-scale: 1.25; }
   padding: 0.6rem; max-width: calc(94vw / var(--ui-scale, 1)); overflow: auto; max-height: calc(45vh / var(--ui-scale, 1));
 }
 #board-mirror.visible-mode { position: relative; transform: none; margin: 1rem auto; max-height: none; }
+@media (max-width: 700px) and (orientation: portrait) {
+  /* phones: dock the visible board controls above the action tray, clear of the HUD and orders */
+  #board-mirror.visible-mode {
+    position: absolute; left: 50%; transform: translateX(-50%); margin: 0;
+    bottom: calc(64px + var(--sab)); max-width: calc(100vw - 16px); max-height: calc(48vh / var(--ui-scale, 1));
+  }
+}
 .mirror-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
 .mirror-label { font-size: 0.75em; color: var(--ink-dim); width: 5.5em; }
 .cell-btn {
@@ -203,13 +210,13 @@ body.large-text { --font-scale: 1.25; }
 .achievements li { background: #ffffff10; border-radius: 8px; padding: 0.35rem 0.6rem; }
 
 /* ---------- settings form ---------- */
-#settings-form { display: grid; gap: 1rem; }
-#settings-form fieldset { border: 1px solid #ffffff1a; border-radius: 10px; padding: 0.8rem; }
+#settings-form { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+#settings-form fieldset { border: 1px solid #ffffff1a; border-radius: 10px; padding: 0.8rem; min-width: 0; }
 #settings-form legend { color: var(--ink-dim); font-size: 0.9em; padding: 0 0.4rem; }
 #settings-form label { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.3rem 0; min-height: 44px; }
 #settings-form input[type="range"] { width: 45%; accent-color: var(--accent-2); }
 #settings-form input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent-2); }
-#settings-form select { font: inherit; background: var(--panel-2); color: var(--ink); border-radius: 8px; padding: 0.4rem; min-height: 44px; }
+#settings-form select { font: inherit; background: var(--panel-2); color: var(--ink); border-radius: 8px; padding: 0.4rem; min-height: 44px; min-width: min(7.5rem, 45%); max-width: 60%; text-overflow: ellipsis; }
 
 /* ---------- lesson banner / toast / caption ---------- */
 #lesson-banner {

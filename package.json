@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "test": "node tests/rules.test.js && node tests/platform.test.js && node --test tests/gfx.test.js",
+    "test": "node tests/rules.test.js && node tests/platform.test.js && node --test tests/gfx.test.js tests/i18n.test.js",
     "test:e2e": "node tests/e2e.mjs && node tests/e2e-graphics.mjs",
     "test:hosted": "node tests/hosted-smoke.mjs"
   },

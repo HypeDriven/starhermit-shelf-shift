@@ -12,6 +12,12 @@ const RNG = window.SSRNG;
 const UI = window.SSUI;
 const Audio = window.SSAudio;
 const Platform = window.SSPlatform;
+const I18N = window.SSI18N;
+const { T, N } = I18N;
+const lang = () => I18N.getLang();
+const shText = () => window.SSShStrings.strings(lang());
+// Language first (sh-language.js: Language setting → account preference → browser).
+I18N.initLanguage();
 
 const $ = id => document.getElementById(id);
 
@@ -57,20 +63,20 @@ function updateSyncStatus() {
   if (!el) return;
   const name = platform.hosted() ? platform.displayName() : null;
   const label = platform.syncLabel();
-  const text = [name ? 'Playing as ' + name : null, label].filter(Boolean).join(' · ');
+  const text = [name ? T('Playing as {name}', { name }) : null, label].filter(Boolean).join(' · ');
   el.textContent = text;
   el.hidden = !text;
-  const L = window.SSShStrings.strings(navigator.language);
+  const L = shText();
   $('btn-signin').textContent = L.signIn;
   $('btn-invite').textContent = L.invite;
   $('btn-signin').classList.toggle('hidden', !platform.canSignIn());
   $('btn-invite').classList.toggle('hidden', !platform.inviteLink());
 }
 function onPlatformSignedOut() {
-  toast(window.SSShStrings.strings(navigator.language).signedOut, 3600);
+  toast(shText().signedOut, 3600);
 }
 async function copyInviteLink() {
-  const L = window.SSShStrings.strings(navigator.language);
+  const L = shText();
   const link = platform.inviteLink();
   if (!link) return;
   try { await navigator.clipboard.writeText(link); toast(L.copied); }
@@ -78,25 +84,29 @@ async function copyInviteLink() {
 }
 $('btn-signin').addEventListener('click', () => platform.signIn());
 $('btn-invite').addEventListener('click', () => { copyInviteLink(); });
-// Hosted start: cloud save (remote wins), then settings KV (platform wins),
-// then the player's keyboard bindings.
+// Hosted start: cloud save (merged with this device's), then settings KV
+// (platform wins), then the player's keyboard bindings.
 async function hostedBoot() {
+  platform.onSaveConflict(pullCloudSave);
   await pullCloudSave();
   if (await platform.syncSettings(saveDoc.settings)) { Store.save(saveDoc); applySettings(); }
   await platform.loadControls();
 }
-// Remote-preferred whole-doc load: the cloud copy wins; localStorage is
-// rewritten underneath it so offline play continues from the same state.
+// Merge the cloud copy into this device's progress (Store.mergeDocs: best of
+// both, nothing dropped), rewrite localStorage underneath and save the merged
+// doc back. Also the 'saveconflict' path when another device saved first.
 async function pullCloudSave() {
   const wrapped = await platform.loadCloudSave();
-  if (!wrapped) return;
+  if (!wrapped) { if (platform.hosted() && saveDoc.progress.stats.rounds) persist(); return; }
   const doc = Store.unwrap(wrapped);
   if (!doc) return;
-  saveDoc = doc;
+  const merged = Store.mergeDocs(doc, saveDoc);
+  const changed = JSON.stringify(merged.progress) !== JSON.stringify(saveDoc.progress);
+  saveDoc = merged;
   persist();
   applySettings();
   refreshTitle();
-  toast('Progress synced from your account.');
+  if (changed) toast(T('Progress synced from your account.'));
 }
 function toast(msg, ms) {
   const t = $('toast');
@@ -157,7 +167,7 @@ function applySettings() {
   Audio.applySettings(s);
   Audio.setCaptions(!!s.captions, text => {
     const c = $('caption');
-    c.textContent = '♪ ' + text;
+    c.textContent = '♪ ' + T(text);
     c.classList.remove('hidden');
     clearTimeout(c._timer);
     c._timer = setTimeout(() => c.classList.add('hidden'), 1500);
@@ -185,7 +195,7 @@ function dailyCountdownText() {
   const next = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1);
   const ms = next - Date.now();
   const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
-  return 'new in ' + h + 'h ' + m + 'm';
+  return T('new in {h}h {m}m', { h, m });
 }
 
 // ---------- title ----------
@@ -203,15 +213,25 @@ function setHudVisible(on) {
   if (!on) $('hud-message').classList.add('hidden');
   $('board-mirror').classList.toggle('hidden', !(on && saveDoc.settings.boardMirror));
 }
+const MODE_NAMES = { learn: N('Learn'), journey: N('Journey'), daily: N('Daily'), practice: N('Practice'), challenge: N('Challenge'), score: N('Score chase') };
+/** A round config's display name (content names are English source strings; dailies are composed). */
+function cfgName(cfg, mode) {
+  const name = cfg && cfg.name;
+  if (!name) return MODE_NAMES[mode] ? T(MODE_NAMES[mode]) : (mode || '');
+  const daily = /^Daily (\d{4}-\d\d-\d\d)$/.exec(name);
+  return daily ? T('Daily {date}', { date: daily[1] }) : T(name);
+}
+/** Stored player names: the default guest/player names translate, real names pass through. */
+function shownName(name) { return name === 'Guest' || name === 'Player' ? T(name) : name; }
 function updateHud() {
   const s = session.state;
   if (!s) return;
-  $('hud-mode-name').textContent = session.cfg.name || session.mode;
+  $('hud-mode-name').textContent = cfgName(session.cfg, session.mode);
   $('hud-score').textContent = String(s.score.total || currentScore(s));
   $('hud-streak').textContent = s.streak > 1 ? '🔥 ' + s.streak : '';
   const bits = [];
-  if (s.cfg.moveLimit) bits.push('moves ' + s.moves + '/' + s.cfg.moveLimit);
-  else bits.push('moves ' + s.moves);
+  if (s.cfg.moveLimit) bits.push(T('moves {n}/{limit}', { n: s.moves, limit: s.cfg.moveLimit }));
+  else bits.push(T('moves {n}', { n: s.moves }));
   $('hud-moves').textContent = bits.join(' ');
   // timer
   const t = $('hud-timer');
@@ -230,7 +250,7 @@ function updateHud() {
     const need = s.cfg.orders[ty], have = Math.min(s.orders[ty] || 0, need);
     const li = UI.el('li', { class: have >= need ? 'done' : '' }, [
       UI.el('span', { class: 'ord-icon', text: Content.ITEMS[ty].icon }),
-      UI.el('span', { text: Content.ITEMS[ty].label + ' ' + have + '/' + need }),
+      UI.el('span', { text: T(Content.ITEMS[ty].label) + ' ' + have + '/' + need }),
       UI.el('span', { class: 'ord-bar' }, [
         UI.el('span', { class: 'ord-fill', style: 'width:' + Math.round(100 * have / need) + '%' })
       ])
@@ -259,15 +279,15 @@ function buildMirror() {
   shelvesHost.innerHTML = ''; counterHost.innerHTML = '';
   if (!s) return;
   for (let r = s.shelves.length - 1; r >= 0; r--) {
-    const row = UI.el('div', { class: 'mirror-row', role: 'group', 'aria-label': 'Shelf ' + (r + 1) });
-    row.appendChild(UI.el('span', { class: 'mirror-label', text: 'Shelf ' + (r + 1) }));
+    const row = UI.el('div', { class: 'mirror-row', role: 'group', 'aria-label': T('Shelf {n}', { n: r + 1 }) });
+    row.appendChild(UI.el('span', { class: 'mirror-label', text: T('Shelf {n}', { n: r + 1 }) }));
     for (let c = 0; c < s.shelves[r].length; c++) {
       row.appendChild(mirrorCell({ area: 'shelf', r, c }, s.shelves[r][c]));
     }
     shelvesHost.appendChild(row);
   }
-  const crow = UI.el('div', { class: 'mirror-row', role: 'group', 'aria-label': 'Counter' });
-  crow.appendChild(UI.el('span', { class: 'mirror-label', text: 'Counter' }));
+  const crow = UI.el('div', { class: 'mirror-row', role: 'group', 'aria-label': T('Counter') });
+  crow.appendChild(UI.el('span', { class: 'mirror-label', text: T('Counter') }));
   for (let i = 0; i < s.counter.length; i++)
     crow.appendChild(mirrorCell({ area: 'counter', i }, s.counter[i]));
   counterHost.appendChild(crow);
@@ -277,11 +297,11 @@ function buildMirror() {
   }
 }
 function mirrorCell(loc, item) {
-  const label = item ? Content.ITEMS[item].label : 'empty';
-  const pos = loc.area === 'counter' ? 'counter cell ' + (loc.i + 1) : 'shelf ' + (loc.r + 1) + ' cell ' + (loc.c + 1);
+  const label = item ? T(Content.ITEMS[item].label) : T('empty');
+  const pos = loc.area === 'counter' ? T('counter cell {n}', { n: loc.i + 1 }) : T('shelf {r} cell {c}', { r: loc.r + 1, c: loc.c + 1 });
   const btn = UI.el('button', {
     class: 'cell-btn' + (selected && legalTarget(loc) ? ' target-ok' : ''),
-    'aria-label': pos + ': ' + label + (selected && !item && !Rules.locEq(loc, selected) ? ' — place here' : ''),
+    'aria-label': pos + ': ' + label + (selected && !item && !Rules.locEq(loc, selected) ? ' — ' + T('place here') : ''),
     'aria-pressed': selected && Rules.locEq(loc, selected) ? 'true' : 'false',
     text: item ? Content.ITEMS[item].icon : '·'
   });
@@ -330,8 +350,8 @@ function startRound(cfg, mode) {
   updateHud();
   buildMirror();
   if (saveDoc.settings.boardMirror) $('board-mirror').classList.remove('hidden');
-  if (cfg.intro) message(cfg.intro, 6000);
-  announce('Round started. ' + (cfg.name || mode) + '. Fill the orders on the left.');
+  if (cfg.intro) message(T(cfg.intro), 6000);
+  announce(T('Round started. {name}. Fill the orders on the left.', { name: cfgName(cfg, mode) }));
 }
 
 function endActiveSession() {
@@ -386,7 +406,7 @@ function tapCell(loc) {
       if (saveDoc.settings.confirmMoves && !(confirmTarget && Rules.locEq(confirmTarget, loc))) {
         confirmTarget = loc;
         if (renderer) renderer.showGhost(loc, Rules.getCell(s, selected));
-        message('Tap again to confirm', 1800);
+        message(T('Tap again to confirm'), 1800);
         return;
       }
       commitMove(selected, loc);
@@ -409,7 +429,7 @@ function selectCell(loc) {
   haptic(8);
   buildMirror();
   const item = Rules.getCell(session.state, loc);
-  announce(Content.ITEMS[item].label + ' selected. ' + targets.length + ' openings available.');
+  announce(T('{item} selected. {n} openings available.', { item: T(Content.ITEMS[item].label), n: targets.length }));
 }
 
 function deselect() {
@@ -421,17 +441,17 @@ function deselect() {
 
 function invalidFeedback(reason) {
   const texts = {
-    'empty-source': 'That cell is empty.',
-    'occupied-target': 'That cell is occupied.',
-    'same-cell': 'Already there.',
-    'game-ended': 'The round is over.',
-    'bad-location': 'Not a valid cell.'
+    'empty-source': N('That cell is empty.'),
+    'occupied-target': N('That cell is occupied.'),
+    'same-cell': N('Already there.'),
+    'game-ended': N('The round is over.'),
+    'bad-location': N('Not a valid cell.')
   };
   session.invalid++;
   Audio.play('invalid');
   haptic([20, 40, 20]);
-  message(texts[reason] || 'Not a legal move.');
-  announce('Invalid move: ' + (texts[reason] || reason));
+  message(T(texts[reason] || N('Not a legal move.')));
+  announce(T('Invalid move: {reason}', { reason: texts[reason] ? T(texts[reason]) : reason }));
 }
 
 function commitMove(from, to) {
@@ -473,16 +493,16 @@ function commitMove(from, to) {
   for (const ev of res.events) {
     if (ev.type === 'clear') {
       Audio.play('clear'); haptic(25);
-      announce('Triple cleared: ' + Content.ITEMS[ev.item].label + ' for ' + ev.points + ' points.');
+      announce(T('Triple cleared: {item} for {n} points.', { item: T(Content.ITEMS[ev.item].label), n: ev.points }));
     } else if (ev.type === 'order-complete') {
       Audio.play('order');
-      message('Order complete: ' + Content.ITEMS[ev.item].label + '!');
-      announce('Order complete: ' + Content.ITEMS[ev.item].label);
+      message(T('Order complete: {item}!', { item: T(Content.ITEMS[ev.item].label) }));
+      announce(T('Order complete: {item}', { item: T(Content.ITEMS[ev.item].label) }));
     } else if (ev.type === 'delivery') {
       Audio.play('delivery');
     } else if (ev.type === 'orders-new') {
-      message('New order wave — round ' + res.state.endlessRound + '!', 2600);
-      announce('New orders. Wave ' + res.state.endlessRound);
+      message(T('New order wave — round {n}!', { n: res.state.endlessRound }), 2600);
+      announce(T('New orders. Wave {n}', { n: res.state.endlessRound }));
     }
   }
   updateHud();
@@ -494,7 +514,7 @@ function commitMove(from, to) {
       if (!res.state.terminal.won) {
         // lesson failed (e.g. overflow in the delivery lesson): retry
         const idx = lessonIdx;
-        message('The counter overflowed — let’s try that lesson again.', 2600);
+        message(T('The counter overflowed — let’s try that lesson again.'), 2600);
         setTimeout(() => startLesson(idx), 1400);
       }
       // won lessons are completed via lessonProgress (goal event 'win')
@@ -516,7 +536,7 @@ function doUndo() {
   selected = null; confirmTarget = null;
   if (renderer) { renderer.clearSelection(); renderer.syncState(session.state, [], true); }
   Audio.play('undo');
-  message('Undone.');
+  message(T('Undone.'));
   updateHud();
   buildMirror();
   lessonProgress([{ type: 'undo' }], 'undo');
@@ -530,15 +550,16 @@ function doHint() {
   session.assists = true;
   if (renderer) renderer.setHint(h.from, h.to);
   Audio.play('hint');
-  const itemName = Content.ITEMS[h.item].label;
+  const item = T(Content.ITEMS[h.item].label);
   const texts = {
-    'complete-triple': 'Move the ' + itemName + ' to finish a triple.',
-    'build-pair': 'Pair the ' + itemName + ' with its twin on a shelf.',
-    'clear-counter': 'Make room: shelve the ' + itemName + ' from the counter.',
-    'any': 'Try relocating the ' + itemName + '.'
+    'complete-triple': N('Move the {item} to finish a triple.'),
+    'build-pair': N('Pair the {item} with its twin on a shelf.'),
+    'clear-counter': N('Make room: shelve the {item} from the counter.'),
+    'any': N('Try relocating the {item}.')
   };
-  message('💡 ' + (texts[h.why] || texts.any), 4200);
-  announce('Hint: ' + (texts[h.why] || texts.any));
+  const text = T(texts[h.why] || texts.any, { item });
+  message('💡 ' + text, 4200);
+  announce(T('Hint: {text}', { text }));
   setTimeout(() => renderer && renderer.clearHint(), 4200);
 }
 
@@ -549,7 +570,7 @@ function finishRound(state) {
   const won = state.terminal.won;
   Audio.play(won ? 'win' : 'lose');
   haptic(won ? [30, 60, 30] : 80);
-  announce(won ? 'Stage complete!' : 'Round lost: ' + state.terminal.reason);
+  announce(won ? T('Stage complete!') : T('Round lost: {reason}', { reason: state.terminal.reason }));
 
   const p = saveDoc.progress;
   p.stats.rounds++;
@@ -593,11 +614,12 @@ function finishRound(state) {
 
   const nextCfg = nextLevelCfg();
   const showResults = () => {
-    UI.buildResults(ctx, {
+    lastResults = {
       won, reason: state.terminal.reason, score: state.score, moves: state.moves,
       elapsedMs: session.elapsedMs, stars, mode: session.mode, cfg: state.cfg,
       invalid: session.invalid, newAchievements: newAch, lbRank, bestImproved, verified, nextCfg
-    });
+    };
+    UI.buildResults(ctx, lastResults);
     setHudVisible(false);
     show('results');
     postToLeaderboard(state);
@@ -615,14 +637,21 @@ function postToLeaderboard(state) {
   if (!platform.hosted() || !['journey', 'daily', 'challenge', 'score'].includes(session.mode)) {
     line.hidden = true; return;
   }
-  const L = window.SSShStrings.strings(navigator.language);
   line.hidden = false;
-  line.textContent = L.lbPosting;
+  lbState = { state: 'posting' };
+  line.textContent = lbText(lbState);
   platform.submitScore(state.score.total).then(r => {
     if (session.state !== state) return;
-    line.textContent = !r.posted ? L.lbNotPosted
-      : r.rank ? L.lbRank.replace('{rank}', r.rank) : L.lbPosted;
+    lbState = !r.posted ? { state: 'failed' } : { state: 'posted', rank: r.rank || null };
+    line.textContent = lbText(lbState);
   });
+}
+let lastResults = null, lbState = null;
+function lbText(lb) {
+  const L = shText();
+  if (lb.state === 'posting') return L.lbPosting;
+  if (lb.state === 'failed') return L.lbNotPosted;
+  return lb.rank ? L.lbRank.replace('{rank}', lb.rank) : L.lbPosted;
 }
 
 function nextLevelCfg() {
@@ -641,7 +670,7 @@ function checkAchievements(state, won) {
       got.push(def);
       // the results panel lists new achievements itself; a toast there would
       // cover its table/buttons on short screens, so only toast elsewhere
-      setTimeout(() => { if ($('app').dataset.screen !== 'results') toast('🏆 ' + def.name); Audio.play('star'); }, 900 + got.length * 600);
+      setTimeout(() => { if ($('app').dataset.screen !== 'results') toast('🏆 ' + T(def.name)); Audio.play('star'); }, 900 + got.length * 600);
     }
   };
   if (state.score.clears > 0) unlock('first-clear');
@@ -753,12 +782,18 @@ function startLesson(i) {
   hideScreens();
   setHudVisible(true);
   $('lesson-banner').classList.remove('hidden');
-  $('lesson-title').textContent = 'Lesson ' + (i + 1) + ': ' + lesson.title;
-  $('lesson-text').textContent = lesson.text;
+  renderLessonBanner();
   updateHud();
   buildMirror();
   if (saveDoc.settings.boardMirror) $('board-mirror').classList.remove('hidden');
-  announce('Lesson ' + (i + 1) + ': ' + lesson.title + '. ' + lesson.text);
+  announce(T('Lesson {n}: {title}', { n: i + 1, title: T(lesson.title) }) + '. ' + T(lesson.text));
+}
+function renderLessonBanner() {
+  const lesson = Content.tutorialLessons()[lessonIdx];
+  if (!lesson) return;
+  $('lesson-title').textContent = T('Lesson {n}: {title}', { n: lessonIdx + 1, title: T(lesson.title) });
+  $('lesson-text').textContent = T(lesson.text);
+  $('lesson-toggle').textContent = T($('lesson-banner').classList.contains('collapsed') ? 'Show' : 'Hide');
 }
 function lessonProgress(events, action) {
   const L = session.lesson;
@@ -772,9 +807,9 @@ function lessonProgress(events, action) {
   if (L.count >= goal.count) {
     saveDoc.progress.tutorialDone[L.id] = true;
     persist();
-    toast('Lesson complete!');
+    toast(T('Lesson complete!'));
     Audio.play('win');
-    announce('Lesson complete.');
+    announce(T('Lesson complete.'));
     const next = lessonIdx + 1;
     session.lesson = null;
     $('lesson-banner').classList.add('hidden');
@@ -782,14 +817,14 @@ function lessonProgress(events, action) {
       setTimeout(() => startLesson(next), 900);
     } else {
       endActiveSession();
-      setTimeout(() => { toast('Tutorial finished — the boutique is yours!'); goTitle(); }, 900);
+      setTimeout(() => { toast(T('Tutorial finished — the boutique is yours!')); goTitle(); }, 900);
     }
   }
 }
 $('lesson-toggle').addEventListener('click', () => {
   const b = $('lesson-banner');
   const collapsed = b.classList.toggle('collapsed');
-  $('lesson-toggle').textContent = collapsed ? 'Show' : 'Hide';
+  $('lesson-toggle').textContent = T(collapsed ? 'Show' : 'Hide');
   $('lesson-toggle').setAttribute('aria-expanded', String(!collapsed));
   if (renderer) renderer.resize();
 });
@@ -812,7 +847,7 @@ function pollGamepad() {
       if (gp.buttons[i].pressed) {
         saveDoc.settings['pad_' + remapAction] = i;
         persist();
-        toast(remapAction + ' → button ' + i);
+        toast(T('{action} → button {n}', { action: T(remapAction), n: i }));
         remapAction = null;
         UI.buildSettingsForm($('settings-form'), ctx);
         return;
@@ -1021,15 +1056,18 @@ $('btn-settings').addEventListener('click', () => { Audio.play('ui'); UI.buildSe
 $('btn-leaderboard').addEventListener('click', () => { Audio.play('ui'); showLeaderboard('endless'); });
 $('btn-start-round').addEventListener('click', () => { if (ctx.setupStart) ctx.setupStart(); });
 
+let setupMode = null;
 function openMode(mode) {
   if (mode === 'journey') { UI.buildJourney($('journey-grid'), ctx); show('journey'); return; }
   if (mode === 'learn') { UI.buildLessonList($('lesson-list'), ctx); show('learn'); return; }
   refreshDaily();
+  setupMode = mode;
   UI.buildSetup($('setup-body'), ctx, mode);
   show('setup');
 }
-let lbSeq = 0;
+let lbSeq = 0, lbTab = 'endless';
 function showLeaderboard(tab) {
+  lbTab = tab;
   // Local records render immediately; the platform's high-score board
   // arrives when signed in.
   UI.buildLeaderboard($('lb-body'), ctx, leaderboardEntries(tab), tab, null);
@@ -1045,14 +1083,14 @@ function showLeaderboard(tab) {
 }
 function remapGamepad(action) {
   remapAction = action;
-  toast('Press a gamepad button for "' + action + '"…', 4000);
+  toast(T('Press a gamepad button for “{action}”…', { action: T(action) }), 4000);
 }
 function resetSave() {
-  if (!confirm('Erase ALL local progress, settings, and scores?')) return;
+  if (!confirm(T('Erase ALL local progress, settings, and scores?'))) return;
   saveDoc = Store.fresh();
   persist();
   applySettings();
-  toast('Local data erased.');
+  toast(T('Local data erased.'));
   goTitle();
 }
 
@@ -1066,6 +1104,7 @@ const ctx = {
   dailyCfg: null,
   totalStars, applySettings, persist, startRound, startLesson, openMode,
   showLeaderboard, remapGamepad, resetSave, playerName, setPlayerName,
+  lang, cfgName, shownName,
   setupStart: null
 };
 Object.defineProperty(ctx, 'dailyCfg', { get: () => dailyCfg });
@@ -1089,7 +1128,7 @@ document.addEventListener('visibilitychange', () => {
   } else if (session.active && pausedByHide) {
     pausedByHide = false;
     resumeRound();
-    toast('Welcome back — round resumed.');
+    toast(T('Welcome back — round resumed.'));
   }
 });
 window.addEventListener('resize', () => renderer && renderer.resize());
@@ -1114,6 +1153,36 @@ window.addEventListener('resize', () => renderer && renderer.resize());
   mo.observe($('app'), { attributes: true, attributeFilter: ['data-screen'] });
 }
 window.addEventListener('orientationchange', () => setTimeout(() => renderer && renderer.resize(), 60));
+
+// ---------- language ----------
+// A change re-renders every text built in code, in place: title, the open
+// screen (keeping setup choices), HUD, board mirror, lesson banner, results.
+function refreshLanguage() {
+  updateSyncStatus();
+  refreshTitle();
+  const screen = document.getElementById('app').dataset.screen;
+  if (screen === 'modes') UI.buildModeList($('mode-list'), ctx);
+  else if (screen === 'setup' && setupMode) {
+    const keep = {};
+    $('setup-body').querySelectorAll('select[id], input[id]').forEach((n) => { keep[n.id] = n.value; });
+    UI.buildSetup($('setup-body'), ctx, setupMode);
+    $('setup-body').querySelectorAll('select[id], input[id]').forEach((n) => {
+      if (keep[n.id] != null) { n.value = keep[n.id]; n.dispatchEvent(new Event('change')); }
+    });
+  } else if (screen === 'journey') UI.buildJourney($('journey-grid'), ctx);
+  else if (screen === 'learn') UI.buildLessonList($('lesson-list'), ctx);
+  else if (screen === 'profile') UI.buildProfile($('profile-body'), ctx);
+  else if (screen === 'help') UI.buildHelp($('help-body'), ctx);
+  else if (screen === 'leaderboard') showLeaderboard(lbTab);
+  else if (screen === 'settings') UI.buildSettingsForm($('settings-form'), ctx);
+  else if (screen === 'results' && lastResults) {
+    UI.buildResults(ctx, lastResults);
+    if (lbState && !$('results-lb').hidden) $('results-lb').textContent = lbText(lbState);
+  }
+  if (session.state) { updateHud(); buildMirror(); }
+  if (session.lesson || !$('lesson-banner').classList.contains('hidden')) renderLessonBanner();
+}
+I18N.onLanguage(refreshLanguage);
 
 // ---------- boot ----------
 function boot() {

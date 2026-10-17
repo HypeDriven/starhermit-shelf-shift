@@ -31,6 +31,9 @@
     const onSync = opts.onSync || (() => {});
     const onSignedOut = opts.onSignedOut || (() => {});
     const sh = opts.sh || root.StarHermit || null;
+    // i18n.js (browser): English-keyed lookups in the game language; identity in Node tests.
+    const T = (k, v) => (root.SSI18N ? root.SSI18N.T(k, v) : String(k).replace(/\{(\w+)\}/g, (m, x) => (v && v[x] != null ? v[x] : m)));
+    let conflictCb = null;
     let nickname = null;
     let sync = 'local'; // local | connecting | synced | saving | error
     let controls = cloneControls(DEFAULT_CONTROLS);
@@ -40,16 +43,16 @@
     function setSync(s) { sync = s; onSync(syncLabel()); }
     function syncLabel() {
       switch (sync) {
-        case 'synced': return 'Cloud save synced';
-        case 'saving': return 'Cloud saving…';
-        case 'connecting': return 'Cloud connecting…';
-        case 'error': return 'Cloud sync error — local copy safe';
+        case 'synced': return T('Cloud save synced');
+        case 'saving': return T('Cloud saving…');
+        case 'connecting': return T('Cloud connecting…');
+        case 'error': return T('Cloud sync error — local copy safe');
         default: return null; // local play: no badge
       }
     }
     function displayName() {
       if (!hosted() || !sh.userId) return null;
-      return nickname || ('Player ' + String(sh.userId).slice(0, 6));
+      return nickname || T('Player {id}', { id: String(sh.userId).slice(0, 6) });
     }
 
     async function loadProfile() {
@@ -85,6 +88,7 @@
       const remote = (await sh.getSettings().catch(() => null)) || {};
       let changed = false;
       for (const k of Object.keys(remote)) {
+        if (k.startsWith('ui.')) continue; // the shared language choice belongs to sh-language.js
         if (k in settings && remote[k] != null && JSON.stringify(settings[k]) !== JSON.stringify(remote[k])) {
           settings[k] = remote[k]; changed = true;
         }
@@ -141,7 +145,7 @@
       const out = [];
       for (const e of (r.items || []).slice(0, pageSize)) {
         const p = e.userId ? await sh.profile(e.userId).catch(() => null) : null;
-        out.push({ name: p ? p.displayName : 'Player', score: e.score });
+        out.push({ name: p ? p.displayName : T('Player'), score: e.score });
       }
       return out.length ? out : null;
     }
@@ -150,6 +154,8 @@
       if (!sh) return;
       if (!sh.token) sh.init();
       sh.on('saved', ok => setSync(ok ? 'synced' : 'error'));
+      // Another device saved first: the game reloads, merges and saves again.
+      sh.on('saveconflict', () => { setSync('saving'); if (conflictCb) conflictCb(); });
       sh.on('auth', a => {
         if (!a.signedIn) { nickname = null; sync = 'local'; onSignedOut(); onSync(syncLabel()); }
       });
@@ -168,6 +174,7 @@
       signIn: () => !!(sh && sh.signIn()),
       inviteLink: () => (hosted() ? sh.inviteLink() : null),
       loadCloudSave, queueCloudSave, flushCloudSave, fetchPlatformLeaderboard, submitScore,
+      onSaveConflict: (cb) => { conflictCb = cb; },
       syncSettings, pushSettings,
       loadControls, actionFor, keyLabel, get controls() { return controls; }
     };

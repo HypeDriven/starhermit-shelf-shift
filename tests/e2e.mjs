@@ -9,7 +9,10 @@
  *   Along the way the desktop pass also exercises pause/resume, the Hint
  *   button, the Undo button and shows the round is finished for real.
  *   A second pass runs the load → settings → practice → a-few-taps flow
- *   on a mobile touch viewport.
+ *   on a mobile touch viewport. A language pass (desktop + mobile, signed in
+ *   through a stubbed StarHermit API) checks Automatic follows the account
+ *   language, switching to Italian mid-round re-renders everything in place
+ *   and saves ui.language, and Report a problem posts a report.
  *
  * How moves are chosen: the game exports `window.SSRules` (its own rules
  * engine), `window.SSContent`, and a debug handle `window.__ss` that
@@ -49,6 +52,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stubStarHermit, launchToken } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT = (stage, vp) => `/tmp/shelf-shift-e2e-${stage}-${vp}.png`;
@@ -314,6 +318,87 @@ async function runPass(browser, name, ctxOpts, { full }) {
   console.log(`ok - ${name}: no page errors`);
 }
 
+// ---------- language + report (signed in through a stubbed StarHermit API) ----------
+// Automatic follows the account's preferred language (fr-CA); choosing Italian
+// in Settings mid-round (opened from the pause menu) re-renders the HUD, board
+// controls, pause menu and settings in place and saves ui.language; Report a
+// problem posts to /reports. Real clicks/taps only; console errors fail.
+async function languagePass(browser, name, ctxOpts, touch) {
+  const errors = [];
+  const context = await browser.newContext(ctxOpts);
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if ((m.type() !== 'error' && m.type() !== 'warning') || browserNoise.test(m.text())) return;
+    errors.push(`console ${m.type()}: ${m.text()}`);
+  });
+  const press = (loc) => (touch ? loc.tap() : loc.click());
+  const text = async (sel) => ((await page.locator(sel).first().textContent()) || '').trim();
+  try {
+    const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+    await page.goto('about:blank');
+    await page.goto(`${BASE}/index.html#game_token=${launchToken()}`, { waitUntil: 'load' });
+    await page.waitForSelector('.screen[data-name="title"].active', { timeout: 15000 });
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA', null, { timeout: 10000 });
+    if (!(await page.$eval('#webgl-fallback', (el) => el.classList.contains('hidden')))) {
+      await press(page.locator('#webgl-continue'));
+      await page.waitForFunction(() => document.getElementById('webgl-fallback').classList.contains('hidden'));
+    }
+    if (await text('#btn-play') !== 'Jouer') throw new Error('title not in French: ' + await text('#btn-play'));
+    await press(page.locator('#btn-play'));
+    await page.waitForSelector('.screen[data-name="modes"].active');
+    await press(page.locator('#mode-list .mode-card[data-mode="practice"]'));
+    await page.waitForSelector('.screen[data-name="setup"].active');
+    await press(page.locator('#btn-start-round'));
+    await page.waitForFunction(() => !document.getElementById('hud-top').classList.contains('hidden'));
+    if (!/coups 0/.test(await text('#hud-moves'))) throw new Error('HUD not in French: ' + await text('#hud-moves'));
+    await press(page.locator('#btn-pause'));
+    await page.waitForSelector('.screen[data-name="pause"].active');
+    await press(page.locator('#btn-pause-settings'));
+    await page.waitForSelector('.screen[data-name="settings"].active');
+    const choice = page.locator('.screen[data-name="settings"] [data-game-language="choice"]');
+    await choice.scrollIntoViewIfNeeded();
+    const auto = ((await choice.locator('option').first().textContent()) || '').trim();
+    if (auto !== 'Automatique — Français (Canada)') throw new Error(`Automatic label not resolved: ${auto}`);
+    await choice.selectOption('it-IT');
+    await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+    await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+    if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+    if (await text('#settings-h') !== 'Impostazioni') throw new Error('settings title not re-rendered');
+    if (!(await page.locator('#settings-form label', { hasText: 'Musica' }).count())) throw new Error('settings body not re-rendered');
+    if (!/mosse 0/.test(await text('#hud-moves'))) throw new Error('HUD not re-rendered');
+    if (await text('#btn-undo .btn-sub') !== 'Annulla') throw new Error('action tray not re-rendered');
+    if (await text('#pause-h') !== 'In pausa') throw new Error('pause menu not re-rendered');
+    const title = page.locator('[data-game-report="title"]');
+    await title.scrollIntoViewIfNeeded();
+    await title.fill('Test report');
+    await press(page.locator('[data-game-report="send"]'));
+    await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+    if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+    const vw = page.viewportSize().width;
+    for (const sel of ['[data-game-language="choice"]', '[data-game-report="send"]', '.screen[data-name="settings"] button.back']) {
+      const b = await page.locator(sel).first().boundingBox();
+      if (!b || b.x < 0 || b.x + b.width > vw + 1) throw new Error(`${sel} cut off horizontally`);
+    }
+    await page.screenshot({ path: SHOT('language', name) });
+    await choice.selectOption('auto');
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    const done = page.locator('.screen[data-name="settings"] button.back');
+    await done.scrollIntoViewIfNeeded();
+    await press(done);
+    await page.waitForSelector('.screen[data-name="pause"].active');
+    if (await text('#btn-resume') !== 'Reprendre') throw new Error('pause menu not in French');
+    await press(page.locator('#btn-resume'));
+    await page.waitForFunction(() => !document.querySelector('.screen[data-name="pause"]').classList.contains('active'));
+    if (await text('#mirror-counter .mirror-label, #board-mirror .mirror-label') === '') throw new Error('board labels empty');
+    await page.unroute(/\/api\/v1\//);
+  } finally {
+    await context.close();
+  }
+  if (errors.length) throw new Error(`${name} language pass had console output:\n  ${errors.join('\n  ')}`);
+  ok(`${name}: language — Automatic → fr-CA, Italian mid-round re-renders HUD/tray/pause/settings, ui.language saved, report posted`);
+}
+
 // ---------- main ----------
 let browser = null;
 try {
@@ -328,6 +413,8 @@ try {
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+  await languagePass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, false);
+  await languagePass(browser, 'mobile', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, true);
   console.log('\nE2E PASS — shelf-shift, desktop + mobile, no page errors');
 } catch (e) {
   failures++;

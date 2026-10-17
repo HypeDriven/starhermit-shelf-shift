@@ -1,6 +1,6 @@
 /* Shelf Shift — localized strings for the StarHermit account controls
- * (sign-in, invite link, sign-out notice, results leaderboard line). Locale follows navigator.language
- * via the Graphics panel's picker. Browser global: window.SSShStrings.
+ * (sign-in, invite link, sign-out notice, results leaderboard line). Callers
+ * pass the game language (SSI18N.getLang()). Browser global: window.SSShStrings.
  */
 (function (root) {
   'use strict';

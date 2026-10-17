@@ -1,0 +1,1 @@
+(function (root, dict) { if (typeof module === 'object' && module.exports) module.exports = dict; else (root.SSLocales = root.SSLocales || {})['en-GB'] = dict; })(typeof self !== 'undefined' ? self : this, { 'Color palette': 'Colour palette' });

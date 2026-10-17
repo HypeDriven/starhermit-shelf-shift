@@ -32,14 +32,23 @@ function res(status, body) {
 }
 function fakePlatform() {
   const calls = [];
-  const state = { save: null, settings: { music: 0.2, theme: 'mint' } };
+  const state = { save: null, ver: 0, settings: { music: 0.2, theme: 'mint' } };
   const fetch = async (url, init = {}) => {
     const method = init.method || 'GET';
     calls.push({ url, method, auth: init.headers.Authorization, body: init.body, keepalive: init.keepalive });
     const path = url.split('?')[0];
     if (path === `/api/v1/users/${USER}/profile`) return res(200, { username: 'mira_x', nickname: 'Mira' });
-    if (path === '/api/v1/me/cloud-saves/' + encodeURIComponent('game:' + SLUG)) {
-      if (method === 'PUT') { state.save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return res(204); }
+    const slot = '/api/v1/me/cloud-saves/' + encodeURIComponent('game:' + SLUG);
+    if (path === slot + '/info') return res(200, state.save ? { exists: true, etag: 'v' + state.ver } : { exists: false });
+    if (path === slot) {
+      if (method === 'PUT') {
+        const h = init.headers || {};
+        const cur = state.save ? 'v' + state.ver : null;
+        if ((h['If-Match'] && h['If-Match'] !== cur) || (h['If-None-Match'] === '*' && cur)) return res(412, { etag: cur });
+        state.save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64');
+        state.ver++;
+        return res(200, { etag: 'v' + state.ver });
+      }
       return state.save ? res(200, new Uint8Array(state.save)) : res(404);
     }
     if (path === `/api/v1/games/${SLUG}/settings`) {
@@ -117,6 +126,62 @@ test('hosted: token, nickname, cloud save game:<slug>, settings, controls, sign-
   assert.strictEqual(p.inviteLink(), null);
 });
 
+test('conflict: a save made on another device is merged, not overwritten', async () => {
+  const fake = fakePlatform();
+  const device = () => {
+    const win = makeWindow('#game_token=' + TOKEN);
+    const sh = SDK.create({ window: win, fetch: fake.fetch, setTimeout: () => 0, clearTimeout() {} });
+    sh.init();
+    const p = Platform.create({ sh });
+    p.start();
+    return p;
+  };
+  const a = device(), b = device();
+  await tick(); await tick();
+  assert.strictEqual(await a.loadCloudSave(), null);
+  assert.strictEqual(await b.loadCloudSave(), null);
+  // device B saves first
+  const docB = Store.fresh();
+  docB.progress.journeyStars = { 1: 3, 2: 1 };
+  docB.progress.endlessBest = 900;
+  b.queueCloudSave(Store.wrap(docB));
+  await b.flushCloudSave();
+  // device A's write is refused (412) and reported through onSaveConflict
+  let conflicts = 0;
+  a.onSaveConflict(() => conflicts++);
+  const docA = Store.fresh();
+  docA.progress.journeyStars = { 2: 3, 3: 2 };
+  docA.progress.endlessBest = 400;
+  docA.progress.stats.rounds = 7;
+  a.queueCloudSave(Store.wrap(docA));
+  await a.flushCloudSave();
+  await tick();
+  assert.strictEqual(conflicts, 1, 'saveconflict surfaced');
+  assert.strictEqual(Store.unwrap(await b.loadCloudSave()).progress.endlessBest, 900, 'B kept');
+  // the game's handler: reload, merge, write back
+  const merged = Store.mergeDocs(Store.unwrap(await a.loadCloudSave()), docA);
+  assert.deepStrictEqual(merged.progress.journeyStars, { 1: 3, 2: 3, 3: 2 });
+  assert.strictEqual(merged.progress.endlessBest, 900);
+  assert.strictEqual(merged.progress.stats.rounds, 7);
+  a.queueCloudSave(Store.wrap(merged));
+  await a.flushCloudSave();
+  assert.deepStrictEqual(Store.unwrap(await b.loadCloudSave()).progress.journeyStars, { 1: 3, 2: 3, 3: 2 }, 'merged save landed');
+});
+
+test('settings sync ignores the shared ui.* keys', async () => {
+  const fake = fakePlatform();
+  fake.state.settings['ui.language'] = 'it-IT';
+  const win = makeWindow('#game_token=' + TOKEN);
+  const sh = SDK.create({ window: win, fetch: fake.fetch, setTimeout: () => 0, clearTimeout() {} });
+  sh.init();
+  const p = Platform.create({ sh });
+  p.start();
+  await tick();
+  const settings = Store.fresh().settings;
+  await p.syncSettings(settings);
+  assert.ok(!('ui.language' in settings), 'ui.language not copied into game settings');
+});
+
 test('standalone: inert, no network', async () => {
   const calls = [];
   const sh = SDK.create({ window: makeWindow(''), fetch: async (u) => { calls.push(u); return res(500); } });
@@ -140,7 +205,7 @@ test('standalone: inert, no network', async () => {
 
 test('sign-in offered on <id>.starhermit.com without a token', async () => {
   const win = makeWindow('');
-  win.location.hostname = 'shelf-shift.starhermit.com';
+  win.location.hostname = '0b9d6f2e-3c4a-4e5b-9a7c-1d2e3f405162.starhermit.com';
   const sh = SDK.create({ window: win, fetch: async () => res(500) });
   sh.init();
   assert.strictEqual(Platform.create({ sh }).canSignIn(), true);
