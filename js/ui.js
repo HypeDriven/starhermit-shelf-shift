@@ -288,7 +288,8 @@
       if (!sum) return;
       const i = info();
       const r = i ? i.resolved : G.resolve(s().gfx, 'balanced');
-      sum.textContent = [i ? (i.gpu || t.unknownGpu) : t.unknownGpu, G.describe(r, i ? i.pixels : null, t)].join(' · ');
+      const lv = i && isFinite(i.level) && i.level !== null ? t.level.replace('{n}', i.level) : null;
+      sum.textContent = [i ? (i.gpu || t.unknownGpu) : t.unknownGpu, lv, G.describe(r, i ? i.pixels : null, t)].filter(Boolean).join(' · ');
       const msg = !i ? t.noRenderer : i.postFailed ? t.postFailed : '';
       note.textContent = msg;
       note.hidden = !msg;

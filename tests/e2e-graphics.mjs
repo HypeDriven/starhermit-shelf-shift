@@ -103,6 +103,7 @@ async function pass(browser, name, ctxOpts, touch) {
     const shadowLabel = await page.$eval('#gfx-shadows option[value="preset"]', (o) => o.textContent);
     expect(shadowLabel === 'From preset (Medium)', `shadows preset label: ${shadowLabel}`);
     expect(await page.$eval('#gfx-shadows', (s) => s.value) === 'preset', 'choosing a preset should clear overrides');
+    expect(/ · Level 0 · /.test(await summary(page)), `summary lacks the hardware level: ${await summary(page)}`);
     ok(`${name}: preset High applied (${await summary(page)})`);
 
     // override one category: bloom off

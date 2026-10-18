@@ -101,8 +101,10 @@ function glowMaterial(detail) {
   });
   return glowMats[detail];
 }
-function itemMaterials(type, color, detail) {
-  const key = type + '|' + color + '|' + detail;
+// `material`: the preset budget's item shading with Detail on — 'physical' keeps the glazed (clearcoat) ceramics
+// and the sheen candle wax, 'standard' draws them with plain PBR (Balanced).
+function itemMaterials(type, color, detail, material) {
+  const key = type + '|' + color + '|' + detail + '|' + material;
   let e = itemMatCache.get(key);
   if (e) return e;
   const darkCol = new THREE.Color(color).multiplyScalar(0.55);
@@ -110,6 +112,11 @@ function itemMaterials(type, color, detail) {
     e = {
       mat: new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.08 }),
       dark: new THREE.MeshStandardMaterial({ color: darkCol, roughness: 0.7, metalness: 0.05 })
+    };
+  } else if (CERAMIC.has(type) && material === 'standard') {
+    e = {
+      mat: new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0, envMapIntensity: 0.45 }),
+      dark: new THREE.MeshStandardMaterial({ color: darkCol, roughness: 0.42, envMapIntensity: 0.45 })
     };
   } else if (CERAMIC.has(type)) {
     // glazed ceramic: clearcoat catches the lamp and room reflections
@@ -121,6 +128,11 @@ function itemMaterials(type, color, detail) {
     e = {
       mat: new THREE.MeshStandardMaterial({ color, roughness: 0.38, metalness: 0.45, envMapIntensity: 1.0 }),
       dark: new THREE.MeshStandardMaterial({ color: darkCol, roughness: 0.3, metalness: 0.75, envMapIntensity: 1.1 })
+    };
+  } else if (type === 'candle' && material === 'standard') {
+    e = {
+      mat: new THREE.MeshStandardMaterial({ color, roughness: 0.5, envMapIntensity: 0.6 }),
+      dark: new THREE.MeshStandardMaterial({ color: darkCol, roughness: 0.6 })
     };
   } else if (type === 'candle') {
     e = {
@@ -137,9 +149,9 @@ function itemMaterials(type, color, detail) {
   return e;
 }
 
-function makeItemMesh(type, geos, color, detail) {
+function makeItemMesh(type, geos, color, detail, material) {
   const grp = new THREE.Group();
-  const { mat, dark } = itemMaterials(type, color, detail);
+  const { mat, dark } = itemMaterials(type, color, detail, material);
   const glow = glowMaterial(detail);
   let m;
   switch (type) {
@@ -239,10 +251,14 @@ function hashRng(seed) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-function canvasTex(w, h, draw, repeat) {
+// `k` scales the canvas (the preset's texture budget): the pattern is drawn in the same logical
+// w×h space, so Low/Balanced get a half-resolution copy and Ultra a crisper double-resolution one.
+function canvasTex(w, h, draw, repeat, k = 1) {
   const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  draw(c.getContext('2d'), w, h);
+  c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+  const ctx = c.getContext('2d');
+  ctx.scale(c.width / w, c.height / h);
+  draw(ctx, w, h);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -262,7 +278,7 @@ function softDot() {
   return _softDot;
 }
 // Wood grain: long wavy streaks along U, multiplied onto the theme wood colour.
-function woodTexture(seed) {
+function woodTexture(seed, k) {
   const rnd = hashRng(seed);
   return canvasTex(512, 128, (g, w, h) => {
     g.fillStyle = '#ece4dc'; g.fillRect(0, 0, w, h);
@@ -284,10 +300,10 @@ function woodTexture(seed) {
       k.addColorStop(0, 'rgba(80,50,30,0.45)'); k.addColorStop(1, 'rgba(80,50,30,0)');
       g.fillStyle = k; g.beginPath(); g.ellipse(x, y, r * 3, r, 0, 0, 7); g.fill();
     }
-  });
+  }, null, k);
 }
 // Floor planks: staggered boards with seams and per-board tone.
-function floorTexture(seed) {
+function floorTexture(seed, k) {
   const rnd = hashRng(seed);
   return canvasTex(512, 512, (g, w, h) => {
     const rows = 8, rh = h / rows;
@@ -314,10 +330,10 @@ function floorTexture(seed) {
       }
       g.fillStyle = 'rgba(40,25,15,0.6)'; g.fillRect(0, r * rh, w, 2);
     }
-  }, [8, 6]);
+  }, [8, 6], k);
 }
 // Wallpaper: soft vertical stripes with a small diamond motif.
-function wallTexture() {
+function wallTexture(k) {
   return canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, w, h);
     g.fillStyle = 'rgba(255,255,255,1)'; g.fillRect(0, 0, w / 2, h);
@@ -326,7 +342,7 @@ function wallTexture() {
     for (const [cx, cy] of [[w / 4, h / 4], [w / 4, h * 3 / 4], [w * 3 / 4, h / 2], [w * 3 / 4, 0], [w * 3 / 4, h]]) {
       g.beginPath(); g.moveTo(cx, cy - 12); g.lineTo(cx + 8, cy); g.lineTo(cx, cy + 12); g.lineTo(cx - 8, cy); g.closePath(); g.fill();
     }
-  }, [16, 6]);
+  }, [16, 6], k);
 }
 
 // Drifting dust motes in the lamp light (layer 3, never raycast).
@@ -355,9 +371,14 @@ class Dust {
     this.points.visible = false;
     scene.add(this.points);
   }
+  /** Draw (and animate) only the first n motes: the preset's dust budget. */
+  setCount(n) {
+    this.count = Math.max(0, Math.min(this.n, n | 0));
+    this.points.geometry.setDrawRange(0, this.count);
+  }
   tick(t) {
     if (!this.points.visible) return;
-    for (let i = 0; i < this.n; i++) {
+    for (let i = 0; i < (this.count ?? this.n); i++) {
       const p = this.ph[i], k = i * 3;
       this.pos[k] = this.base[k] + Math.sin(t * 0.13 + p) * 0.35;
       this.pos[k + 1] = this.base[k + 1] + Math.sin(t * 0.09 + p * 1.7) * 0.45;
@@ -391,6 +412,18 @@ const GradeShader = {
     }`
 };
 
+// Run a post pass at a fraction of the frame: EffectComposer.addPass / setSize resize every pass to the
+// full frame, so the pass's own setSize applies the scale (half-res bloom / GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k > 0 && k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
+// What the built scene depends on beyond the theme: surface detail and the preset's material/texture budget.
+const lookOf = (q) => [q.detail, q.budget.material, q.budget.texture].join('|');
+
 function detectGpu(gl) {
   try {
     const ctx = gl.getContext();
@@ -421,7 +454,12 @@ export function createRenderer(opts) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   host.appendChild(renderer.domElement);
   const gpu = detectGpu(renderer);
-  const detected = Gfx.detectPreset(gpu, isTouchDevice());
+  // StarHermit hardware level (js/gpu-level.js): this renderer's GPU string plus device facts
+  // (phone/tablet, cores, memory, screen) → level 0–20 → the Auto preset.
+  let system = {};
+  try { system = window.StarHermitGpu ? window.StarHermitGpu.detectSystem() : { mobile: isTouchDevice() }; } catch (e) { system = { mobile: isTouchDevice() }; }
+  const level = Gfx.detectLevel(gpu, Object.assign({}, system, { webgl: true, webgl2: true }));
+  const detected = Gfx.presetForLevel(level);
 
   // Image-based lighting: a neutral room environment prefiltered once.
   let envMap = null;
@@ -475,8 +513,8 @@ export function createRenderer(opts) {
   lampLight.visible = false;
   scene.add(keyLight, keyTarget, fillLight, rimLight, lampLight);
 
-  const particles = new Particles(scene, 400);
-  const dust = new Dust(scene, 140);
+  const particles = new Particles(scene, 800);
+  const dust = new Dust(scene, Gfx.DUST_MAX);
   let lamps = [];          // pendant groups (sway)
   let texCache = null;     // procedural textures, built on first detailed use
 
@@ -491,7 +529,7 @@ export function createRenderer(opts) {
   let outline = null;
   let boardDims = { w: 5, h: 6 };
   let quality = 'low';
-  let q = Gfx.resolve({}, detected); // resolved graphics settings
+  let q = Gfx.resolve({}, detected, level); // resolved graphics settings
   let gfxJson = null;
   let lookKey = null;       // theme + detail + item palette currently built
   let composer = null, postKey = null, postFailed = false;
@@ -511,7 +549,7 @@ export function createRenderer(opts) {
   let themeId = null;
   function setTheme(id, force) {
     const th = themeById(id);
-    const key = th.id + '|' + q.detail + '|' + settings.colorPalette;
+    const key = th.id + '|' + lookOf(q) + '|' + settings.colorPalette;
     if (key === lookKey && !force) return; // nothing visual changed
     lookKey = key;
     themeId = th.id;
@@ -524,14 +562,16 @@ export function createRenderer(opts) {
     lampLight.color.set(p.light);
     lampLight.visible = detailed;
     for (const m of Object.values(mats)) m.dispose && m.dispose();
-    if (detailed && !texCache) texCache = { wood: woodTexture(11), wood2: woodTexture(29), floor: floorTexture(5), wall: wallTexture() };
+    const tk = q.budget.texture;
+    if (texCache && texCache.k !== tk) { for (const t of Object.values(texCache)) t.dispose && t.dispose(); texCache = null; }
+    if (detailed && !texCache) texCache = { k: tk, wood: woodTexture(11, tk), wood2: woodTexture(29, tk), floor: floorTexture(5, tk), wall: wallTexture(tk) };
     const T = detailed ? texCache : {};
     const std = (o) => new THREE.MeshStandardMaterial(o);
     mats.wall = std({ color: p.wall, roughness: 0.95, map: T.wall || null, envMapIntensity: 0.3 });
     mats.floor = std({ color: p.floor, roughness: 0.62, map: T.floor || null, envMapIntensity: 0.45 });
     mats.wood = std({ color: p.wood, roughness: 0.55, map: T.wood || null, envMapIntensity: 0.5 });
     mats.woodDark = std({ color: p.woodDark, roughness: 0.65, map: T.wood2 || null, envMapIntensity: 0.4 });
-    mats.counter = detailed
+    mats.counter = detailed && q.budget.material === 'physical'
       ? new THREE.MeshPhysicalMaterial({ color: p.counter, roughness: 0.4, map: T.wood, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.6 })
       : std({ color: p.counter, roughness: 0.55 });
     mats.metal = std({ color: p.metal, roughness: 0.35, metalness: 0.7, envMapIntensity: 1.0 });
@@ -820,7 +860,7 @@ export function createRenderer(opts) {
     const key = keyOf(loc);
     const cell = cellMeshes.get(key);
     if (!cell) return;
-    const g = makeItemMesh(type, geos, itemColor(type), q.detail);
+    const g = makeItemMesh(type, geos, itemColor(type), q.detail, q.budget.material);
     g.position.copy(cell.pos);
     g.position.y = cell.pos.y + (loc.area === 'counter' ? 0.0 : -0.7);
     g.position.y = Math.max(0.7, g.position.y);
@@ -903,11 +943,11 @@ export function createRenderer(opts) {
         }
         if (n) {
           p.divideScalar(n);
-          particles.burst(p, itemColor(ev.item), q.particles === 'low' ? 10 : 24, 1.6, 1.8);
+          particles.burst(p, itemColor(ev.item), Math.round((q.particles === 'low' ? 10 : 24) * q.budget.burst), 1.6, 1.8);
         }
         if (!reducedMotion) camShake = Math.max(camShake, 0.06);
       } else if (ev.type === 'win') {
-        particles.burst(new THREE.Vector3(0, boardDims.h * 0.6, 0.5), 0xffd070, q.particles === 'low' ? 30 : 80, 3.2, 2.6);
+        particles.burst(new THREE.Vector3(0, boardDims.h * 0.6, 0.5), 0xffd070, Math.round((q.particles === 'low' ? 30 : 80) * q.budget.burst), 3.2, 2.6);
         if (!reducedMotion) camShake = Math.max(camShake, 0.12);
       } else if (ev.type === 'lose') {
         if (!reducedMotion) camShake = Math.max(camShake, 0.15);
@@ -994,7 +1034,7 @@ export function createRenderer(opts) {
     hideGhost();
     const cell = cellMeshes.get(keyOf(loc));
     if (!cell || !itemType) return;
-    ghost = makeItemMesh(itemType, geos, itemColor(itemType), q.detail);
+    ghost = makeItemMesh(itemType, geos, itemColor(itemType), q.detail, q.budget.material);
     ghost.traverse(m => {
       if (m.isMesh) {
         m.material = m.material.clone();
@@ -1077,8 +1117,8 @@ export function createRenderer(opts) {
     const json = JSON.stringify(saved || {});
     if (json === gfxJson) return;
     gfxJson = json;
-    const prevDetail = q.detail;
-    q = Gfx.resolve(saved || {}, detected);
+    const prevLook = lookOf(q);
+    q = Gfx.resolve(saved || {}, detected, level);
     quality = q.preset;
     const sz = Gfx.SHADOW_MAP[q.shadows];
     renderer.shadowMap.enabled = sz > 0;
@@ -1092,7 +1132,8 @@ export function createRenderer(opts) {
     // Image-based lighting: with the room environment the hemisphere fill steps back.
     scene.environment = q.reflections === 'on' ? envMap : null;
     fillLight.intensity = scene.environment ? 0.55 : 0.9;
-    if (q.detail !== prevDetail && lookKey) setTheme(themeId, true);
+    if (lookOf(q) !== prevLook && lookKey) setTheme(themeId, true);
+    dust.setCount(q.budget.dust);
     dust.points.visible = q.particles === 'high';
     adaptiveScale = 1;
     frameTimes.length = 0;
@@ -1114,7 +1155,7 @@ export function createRenderer(opts) {
   /** What the Graphics panel shows: GPU, auto choice, resolved tiers, pixels, frame rate. */
   function graphicsInfo() {
     const px = [Math.round(size[0] * pixelRatio), Math.round(size[1] * pixelRatio)];
-    return { gpu, detected, resolved: q, pixels: px, fps: Math.round(fps), adaptiveScale: Math.round(adaptiveScale * 100) / 100, postFailed };
+    return { gpu, level, detected, resolved: q, pixels: px, fps: Math.round(fps), adaptiveScale: Math.round(adaptiveScale * 100) / 100, postFailed };
   }
 
   function fpsVisible(on) {
@@ -1130,7 +1171,7 @@ export function createRenderer(opts) {
   }
 
   function currentPostKey() {
-    return q.post ? [q.ao, q.bloom, q.grade, q.antialias, size[0], size[1], pixelRatio].join('|') : 'none';
+    return q.post ? [q.ao, q.bloom, q.grade, q.antialias, q.budget.bloomRes, q.budget.aoRes, size[0], size[1], pixelRatio].join('|') : 'none';
   }
 
   function buildPost() {
@@ -1146,7 +1187,7 @@ export function createRenderer(opts) {
       c.setSize(w, h);
       c.addPass(new RenderPass(scene, camera));
       if (q.ao !== 'off') {
-        const ao = new GTAOPass(scene, camera, pw, ph);
+        const ao = atScale(new GTAOPass(scene, camera, pw, ph), q.budget.aoRes);
         ao.output = GTAOPass.OUTPUT.Default;
         ao.blendIntensity = 0.75;
         const hi = q.ao === 'high';
@@ -1155,7 +1196,7 @@ export function createRenderer(opts) {
         c.addPass(ao);
       }
       // High threshold: only flames, lantern glass and lamp bulbs bloom.
-      if (q.bloom === 'on') c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.5, 0.9));
+      if (q.bloom === 'on') c.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.5, 0.9), q.budget.bloomRes));
       if (q.grade === 'on') c.addPass(new ShaderPass(GradeShader));
       c.addPass(new OutputPass());
       if (q.antialias === 'smaa') c.addPass(new SMAAPass(pw, ph));

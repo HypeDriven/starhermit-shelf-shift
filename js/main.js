@@ -1220,4 +1220,6 @@ function boot() {
 boot();
 
 // Debug/testing hook (read-only state access + the same input path the UI uses)
-window.__ss = { session, tapCellForTest: tapCell, get save() { return saveDoc; } };
+// screenPos: where a cell sits on the 3D canvas (read-only; the benchmark taps there like a player).
+window.__ss = { session, tapCellForTest: tapCell, get save() { return saveDoc; },
+  screenPos: (loc) => (renderer ? renderer.screenPos(loc) : null) };

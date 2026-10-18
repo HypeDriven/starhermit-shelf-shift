@@ -130,7 +130,36 @@ The subject is the active playfield at near-tabletop to room scale, framed so st
 
 ### Graphics
 
-A warm directional key light casts PCF soft shadows from a shadow box fitted tightly around the shelf unit, counter and side crates; a hemisphere fill, a rim light and ACES filmic tone mapping with sRGB output complete the base lighting, and the no-post Low preset keeps the same hierarchy. Optional effects: image-based lighting from a prefiltered room environment (reflections on glazed and metal pieces), procedural surface detail (wood grain on the shelves, counter and crates, plank flooring, striped wallpaper with wainscot panelling, metal pendant shades with glowing bulbs and a lamp glow, framed pictures beside the shelf, clear-coated ceramics, satin candle wax and metal lanterns and clocks), GTAO ambient occlusion, bloom limited to flames, lantern glass and bulbs, a warm colour grade with vignette, FXAA/SMAA/MSAA anti-aliasing, soft round particle bursts plus drifting dust motes in the lamp light, and ambient motion (candle and lantern flicker, gentle lamp sway, dust drift) that stops under reduced motion. Settings → **Graphics** offers a quality preset (Auto, chosen from the detected GPU where software renderers get Low and touch devices are capped at Balanced; Low; Balanced; High; Ultra), a render scale (50–200% of the preset's; pixel ratio is capped at 1, 1.5 and 2 for Low, Balanced and High/Ultra), an override per category — shadows, ambient occlusion, bloom, colour grade, anti-aliasing, reflections, surface detail, particles, ambient motion — defaulting to "From preset (…)" (choosing a preset clears overrides), adaptive resolution (steps the resolution down to 60% when frames are slow and back up when fast) and a frame-rate readout (bottom-left, never over controls), plus a summary line with the GPU name, cost and pixel size. Changes apply immediately (the active preset is mirrored in `body[data-gfx-preset]`), are stored in the save document's `settings.gfx` (older saves carry their quality tier over), and the panel follows the game language. If post-processing cannot be built the game renders without it and the panel says so; without WebGL the panel notes that graphics settings have no effect.
+A warm directional key light casts PCF soft shadows from a shadow box fitted tightly around the shelf unit, counter and side crates; a hemisphere fill, a rim light and ACES filmic tone mapping with sRGB output complete the base lighting, and the no-post Low preset keeps the same hierarchy. Optional effects: image-based lighting from a prefiltered room environment (reflections on glazed and metal pieces), procedural surface detail (wood grain on the shelves, counter and crates, plank flooring, striped wallpaper with wainscot panelling, metal pendant shades with glowing bulbs and a lamp glow, framed pictures beside the shelf, clear-coated ceramics, satin candle wax and metal lanterns and clocks), GTAO ambient occlusion, bloom limited to flames, lantern glass and bulbs, a warm colour grade with vignette, FXAA/SMAA/MSAA anti-aliasing, soft round particle bursts plus drifting dust motes in the lamp light, and ambient motion (candle and lantern flicker, gentle lamp sway, dust drift) that stops under reduced motion. Settings → **Graphics** offers a quality preset (Auto, chosen from the StarHermit hardware level below; Low; Balanced; High; Ultra), a render scale (50–200% of the preset's; pixel ratio is capped at 1, 1.5 and 2 for Low, Balanced and High/Ultra), an override per category — shadows, ambient occlusion, bloom, colour grade, anti-aliasing, reflections, surface detail, particles, ambient motion — defaulting to "From preset (…)" (choosing a preset clears overrides), adaptive resolution (steps the resolution down to 60% when frames are slow and back up when fast) and a frame-rate readout (bottom-left, never over controls), plus a summary line "GPU · Level N · cost · W×H px" ("Level" localized). Changes apply immediately (the active preset is mirrored in `body[data-gfx-preset]`), are stored in the save document's `settings.gfx` (older saves carry their quality tier over), and the panel follows the game language. If post-processing cannot be built the game renders without it and the panel says so; without WebGL the panel notes that graphics settings have no effect.
+
+**Hardware-level detection.** `js/gpu-level.js` (shared StarHermit copy, `window.StarHermitGpu`, a classic script loaded before `js/gfx.js`, never edited here) rates the WebGL unmasked renderer plus device facts (`detectSystem()`: phone/tablet, cores, memory, screen) on the StarHermit hardware level 0–20 (0 = Galaxy S20 / Intel UHD or weaker, every software renderer and no WebGL; 20 = RTX 5090; each level ≈ 1.23×; laptop parts two levels below desktop; phones, tablets and ≤ 4 GB machines capped at 9). `js/gfx.js` maps it with `presetForLevel(level, { low: 0, balanced: 4, high: 10, ultra: 17 })`, so Auto picks Ultra on strong GPUs; adaptive resolution still steps down when slow. Headless SwiftShader is level 0 → Low. Phones and tablets pace Auto FPS at half the display refresh rate ("Auto (half refresh rate)") and start at 16 simultaneous sounds (shared `game-options.js`).
+
+**Per-preset budgets** (`BUDGETS` / `budgetFor` in `js/gfx.js`). Each preset holds 60 FPS on the weakest GPU Auto gives it — Low at level 0, Balanced 4, High 10, Ultra 17. Shelves, items, tap targets and rules are identical on every preset; only visuals change. Dust and burst counts are tuned at the floor level and scale up within the preset on faster GPUs (`StarHermitGpu.scaleBudget`, ≤ 2×, at most 280 motes / 2× bursts).
+
+| Preset (floor level) | Pixel ratio cap / scale | Shadows | Post | Materials (Detail on) | Procedural textures | Dust motes | Burst density |
+|---|---|---|---|---|---|---|---|
+| Low (0) | 1 / 1 | off | none (canvas MSAA) | flat, no surface detail | — | off (Particles low) | 0.6× |
+| Balanced (4) | 1.5 / 1 | 1024² | half-res bloom, grade, FXAA | Standard (no clearcoat/sheen) | ½ size (256×64 wood, 256² floor, 128² wallpaper) | 60 | 0.8× |
+| High (10) | 2 / 1 | 2048² | half-res GTAO + bloom, grade, SMAA | Physical (glazed ceramics, sheen wax, clear-coated counter) | full (512×128, 512², 256²) | 90 | 1× |
+| Ultra (17) | 2 / 1.25 | 4096² | full-res GTAO (16 samples) + bloom, grade, MSAA | Physical | 2× (1024×256, 1024², 512²) | 140 | 1× |
+
+**Benchmark** (`node tools/gfx-bench.mjs shelf-shift`; hook `tests/gfx-bench.mjs` picks the preset in Settings → Graphics, starts Practice → Expert and keeps playing the hinted move by tapping the cells on the 3D canvas, located through the renderer's projection exposed on the read-only `window.__ss.screenPos`, retrying after a finished round). Measured 2026-10-18 (GPU ms above the draws-skipped floor, projected to the preset's floor level; CPU p90 on the RTX 5090 run):
+
+Desktop 1920×1080:
+
+```
+PASS low       GPU p50 11.79 / p90 14.20 ms (same page, draws skipped: 11.33 / 12.47) on level 2 → at level 0: typical 0.70 (≤ 12), slow 2.61 (≤ 14)  CPU p90 1.00 ms (≤ 6)  frames 478/479
+PASS balanced  GPU p50 14.11 / p90 15.38 ms (same page, draws skipped: 10.90 / 11.96) on level 2 → at level 4: typical 2.12 (≤ 12), slow 2.26 (≤ 14)  CPU p90 1.40 ms (≤ 6)  frames 403/476
+PASS high      GPU p50 18.68 / p90 23.79 ms (same page, draws skipped: 10.92 / 11.97) on level 2 → at level 10: typical 1.48 (≤ 12), slow 2.26 (≤ 14)  CPU p90 1.90 ms (≤ 6)  frames 319/478
+PASS ultra     GPU p50 100.60 / p90 105.74 ms (same page, draws skipped: 15.57 / 16.99) on level 2 → at level 17: typical 3.81 (≤ 12), slow 3.98 (≤ 14)  CPU p90 1.80 ms (≤ 6)  frames 80/478
+```
+
+Phone 390×844 at DPR 3 (`--mobile --presets low,balanced`):
+
+```
+PASS low       GPU p50 14.67 / p90 16.38 ms (same page, draws skipped: 14.56 / 15.94) on level 2 → at level 0: typical 0.17 (≤ 12), slow 0.68 (≤ 14)  CPU p90 0.80 ms (≤ 6)  frames 406/406
+PASS balanced  GPU p50 14.30 / p90 16.42 ms (same page, draws skipped: 14.43 / 16.69) on level 2 → at level 4: typical 0.00 (≤ 12), slow 0.00 (≤ 14)  CPU p90 1.50 ms (≤ 6)  frames 410/433
+```
 
 ### Camera and motion
 
@@ -170,7 +199,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 - `rules`: pure deterministic state transitions, legality, scoring, seeded random stream.
 - `session`: local or hosted commands, snapshots, prediction policy, reconnect, replay.
 - `render`: Three.js scene graph, semantic entity views, camera, lighting, VFX, quality (js/render3d.js; post-processing addons vendored from the same three.js r160 under vendor/three/addons/, resolved through the page's import map).
-- `gfx`: pure graphics quality model (js/gfx.js): presets, per-category overrides, GPU detection, cost summary and the localized Graphics panel strings.
+- `gfx`: pure graphics quality model (js/gfx.js): presets, per-category overrides, hardware-level detection, per-preset budgets, cost summary and the localized Graphics panel strings.
 - `ui`: responsive DOM shell, focus, settings, overlays, accessibility mirror.
 - `i18n`: locale dictionaries, `T()` lookup, `data-i18n` markup and the StarHermit language wiring (js/i18n.js, js/locales/).
 - `audio`: buses, event mapping, focus/background behavior, decode and memory policy.

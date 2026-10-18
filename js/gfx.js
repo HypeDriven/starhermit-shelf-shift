@@ -1,5 +1,5 @@
 /* Shelf Shift — graphics quality model: presets, per-category overrides,
- * GPU detection, cost summary and the Graphics panel strings.
+ * StarHermit hardware-level detection, per-preset budgets, cost summary and the Graphics panel strings.
  * Pure (no three.js), so the settings panel, the renderer and the unit tests
  * agree on what a setting means. Browser global: window.SSGfx.
  */
@@ -41,15 +41,61 @@
 
   var DEFAULTS = { preset: 'auto', render_scale: 1, adaptive: true, show_fps: false };
 
-  /** Best preset for this GPU (unmasked renderer string). Touch devices are capped at balanced. */
-  function detectPreset(gpu, mobile) {
-    var g = String(gpu || '').toLowerCase();
-    var p;
-    if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/.test(g)) p = 'low';
-    else if (/nvidia|geforce|rtx|gtx|quadro|radeon rx|radeon pro|amd radeon(?!.*graphics)|apple m\d/.test(g)) p = 'high';
-    else p = 'balanced';
-    if (mobile && p !== 'low') p = 'balanced';
-    return p;
+  // Auto picks the preset from the StarHermit hardware level (0 = Galaxy S20 / Intel UHD or weaker, 20 = RTX
+  // 5090; js/gpu-level.js → window.StarHermitGpu, a classic script loaded before this one): Low from 0,
+  // Balanced from 4, High from 10, Ultra from 17. Phones, tablets and ≤ 4 GB machines are capped at level 9.
+  var LEVELS = { low: 0, balanced: 4, high: 10, ultra: 17 };
+  function gpuApi() { return typeof globalThis !== 'undefined' ? globalThis.StarHermitGpu : undefined; }
+
+  /** Hardware level 0–20 for an unmasked renderer string plus StarHermitGpu.detectSystem() facts. */
+  function detectLevel(gpu, system) {
+    var G = gpuApi();
+    var sys = Object.assign({ webgl: true, webgl2: true }, system || {}, { gpu: String(gpu || '') });
+    if (!gpu) sys.webgl = false; // no renderer string: no usable WebGL
+    return G ? G.detectLevel(sys) : (gpu ? LEVELS.balanced : 0);
+  }
+
+  /** The preset Auto starts from for a hardware level. */
+  function presetForLevel(level) {
+    var G = gpuApi();
+    if (G) return G.presetForLevel(level, LEVELS);
+    return PRESETS.filter(function (p) { return LEVELS[p] <= level; }).pop() || 'low';
+  }
+
+  /** Best preset for this GPU (the hardware level already caps phones and tablets at Balanced). */
+  function detectPreset(gpu, system) {
+    return presetForLevel(detectLevel(gpu, system));
+  }
+
+  /*
+   * Per-preset asset and effect budget. Each preset holds 60 FPS on the weakest GPU Auto gives it (Low →
+   * level 0, Balanced → 4, High → 10, Ultra → 17; measured with tests/gfx-bench.mjs). Shelves, items,
+   * picking and rules are identical on every preset — only visuals change.
+   *   texture   procedural wood / floor / wallpaper canvas scale (×1 = 512×128 wood, 512² floor, 256² wallpaper;
+   *             Detail on)
+   *   material  item shading with Detail on: standard everywhere (Balanced) or the glazed / sheen
+   *             physical materials (High, Ultra)
+   *   dust      drifting dust motes in the lamp light (Particles high), scaled with the level
+   *   burst     particle-burst density multiplier, scaled with the level
+   *   bloomRes / aoRes  bloom and GTAO resolution as a fraction of the frame
+   */
+  var BUDGETS = {
+    low: { texture: 0.5, material: 'standard', dust: 40, burst: 0.6, bloomRes: 0.5, aoRes: 0.5 },
+    balanced: { texture: 0.5, material: 'standard', dust: 60, burst: 0.8, bloomRes: 0.5, aoRes: 0.5 },
+    high: { texture: 1, material: 'physical', dust: 90, burst: 1, bloomRes: 0.5, aoRes: 0.5 },
+    ultra: { texture: 2, material: 'physical', dust: 140, burst: 1, bloomRes: 1, aoRes: 1 }
+  };
+  var DUST_MAX = 280;
+
+  /** A preset's concrete budget for a hardware level (counts scale ≤ 2× within the preset). */
+  function budgetFor(preset, level) {
+    var b = Object.assign({}, BUDGETS[preset] || BUDGETS.balanced);
+    var G = gpuApi(), floor = LEVELS[preset] || 0;
+    var lv = Math.max(isFinite(level) ? level : floor, floor);
+    var k = G ? Math.min(2, G.scaleBudget(1, lv, floor)) : 1;
+    b.dust = Math.min(DUST_MAX, Math.round(b.dust * k));
+    b.burst = Math.min(2, Math.round(b.burst * k * 100) / 100);
+    return b;
   }
 
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
@@ -58,7 +104,7 @@
    * Resolve saved settings into concrete tiers.
    * saved: { preset: 'auto'|preset, render_scale, adaptive, show_fps, <category>: 'preset'|tier }
    */
-  function resolve(saved, detected) {
+  function resolve(saved, detected, level) {
     var s = saved || {};
     var auto = PRESETS.indexOf(s.preset) < 0;
     var preset = auto ? (PRESETS.indexOf(detected) >= 0 ? detected : 'balanced') : s.preset;
@@ -68,6 +114,8 @@
     for (var cat in CATEGORIES) {
       out[cat] = CATEGORIES[cat].indexOf(s[cat]) >= 0 ? s[cat] : row[cat];
     }
+    out.level = isFinite(level) && level !== null ? level : LEVELS[preset];
+    out.budget = budgetFor(preset, out.level);
     out.adaptive = s.adaptive !== false;
     out.showFps = !!s.show_fps;
     // The composer runs only when something needs it; otherwise canvas MSAA is used.
@@ -119,7 +167,7 @@
       msaa: 'MSAA', 'static': 'Static', animated: 'Animated', plain: 'Plain', detailed: 'Detailed' },
     postFailed: 'Post-processing is unavailable on this device, so effects render without it.',
     noRenderer: '3D view unavailable: graphics settings have no effect.',
-    unknownGpu: 'unknown GPU',
+    unknownGpu: 'unknown GPU', level: 'Level {n}',
     summary: { noShadows: 'no shadows', shadows: '{n} shadows', ao: 'ambient occlusion',
       aoHigh: 'full ambient occlusion', bloom: 'bloom', reflections: 'reflections', noAa: 'no anti-aliasing' }
   };
@@ -143,7 +191,7 @@
       animated: 'Animado', plain: 'Simple', detailed: 'Detallado' },
     postFailed: 'El posprocesado no está disponible en este dispositivo; los efectos se muestran sin él.',
     noRenderer: 'Vista 3D no disponible: los ajustes gráficos no tienen efecto.',
-    unknownGpu: 'GPU desconocida',
+    unknownGpu: 'GPU desconocida', level: 'Nivel {n}',
     summary: { noShadows: 'sin sombras', shadows: 'sombras {n}', ao: 'oclusión ambiental',
       aoHigh: 'oclusión ambiental completa', bloom: 'resplandor', reflections: 'reflejos', noAa: 'sin antialiasing' }
   };
@@ -162,7 +210,7 @@
       animated: 'Animiert', plain: 'Schlicht', detailed: 'Detailliert' },
     postFailed: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; Effekte werden ohne sie dargestellt.',
     noRenderer: '3D-Ansicht nicht verfügbar: Grafikeinstellungen haben keine Wirkung.',
-    unknownGpu: 'unbekannte GPU',
+    unknownGpu: 'unbekannte GPU', level: 'Stufe {n}',
     summary: { noShadows: 'keine Schatten', shadows: '{n}-Schatten', ao: 'Umgebungsverdeckung',
       aoHigh: 'volle Umgebungsverdeckung', bloom: 'Leuchteffekt', reflections: 'Spiegelungen', noAa: 'keine Kantenglättung' }
   });
@@ -178,7 +226,7 @@
       animated: 'Animé', plain: 'Simple', detailed: 'Détaillé' },
     postFailed: 'Le post-traitement n’est pas disponible sur cet appareil ; les effets s’affichent sans lui.',
     noRenderer: 'Vue 3D indisponible : les réglages graphiques n’ont aucun effet.',
-    unknownGpu: 'GPU inconnu',
+    unknownGpu: 'GPU inconnu', level: 'Niveau {n}',
     summary: { noShadows: 'sans ombres', shadows: 'ombres {n}', ao: 'occlusion ambiante',
       aoHigh: 'occlusion ambiante complète', bloom: 'halo lumineux', reflections: 'reflets', noAa: 'sans anticrénelage' }
   };
@@ -197,7 +245,7 @@
       animated: 'Animado', plain: 'Simples', detailed: 'Detalhado' },
     postFailed: 'O pós-processamento não está disponível neste dispositivo; os efeitos são exibidos sem ele.',
     noRenderer: 'Visão 3D indisponível: as configurações gráficas não têm efeito.',
-    unknownGpu: 'GPU desconhecida',
+    unknownGpu: 'GPU desconhecida', level: 'Nível {n}',
     summary: { noShadows: 'sem sombras', shadows: 'sombras {n}', ao: 'oclusão ambiente',
       aoHigh: 'oclusão ambiente completa', bloom: 'brilho', reflections: 'reflexos', noAa: 'sem suavização' }
   });
@@ -213,7 +261,7 @@
       animated: 'Animato', plain: 'Semplice', detailed: 'Dettagliato' },
     postFailed: 'La post-elaborazione non è disponibile su questo dispositivo; gli effetti vengono mostrati senza.',
     noRenderer: 'Vista 3D non disponibile: le impostazioni grafiche non hanno effetto.',
-    unknownGpu: 'GPU sconosciuta',
+    unknownGpu: 'GPU sconosciuta', level: 'Livello {n}',
     summary: { noShadows: 'senza ombre', shadows: 'ombre {n}', ao: 'occlusione ambientale',
       aoHigh: 'occlusione ambientale completa', bloom: 'bagliore', reflections: 'riflessi', noAa: 'senza antialiasing' }
   });
@@ -234,6 +282,8 @@
 
   return {
     PRESETS: PRESETS, CATEGORIES: CATEGORIES, SHADOW_MAP: SHADOW_MAP, DEFAULTS: DEFAULTS, STRINGS: STRINGS,
+    LEVELS: LEVELS, BUDGETS: BUDGETS, DUST_MAX: DUST_MAX,
+    detectLevel: detectLevel, presetForLevel: presetForLevel, budgetFor: budgetFor,
     detectPreset: detectPreset, resolve: resolve, choosePreset: choosePreset, presetTier: presetTier,
     describe: describe, pickLocale: pickLocale, strings: strings
   };
