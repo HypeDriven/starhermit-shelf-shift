@@ -1,11 +1,17 @@
 {
   "name": "shelf-shift",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Shelf Shift — a cozy boutique shelf-organizing puzzle on the StarHermit engine.",
   "scripts": {
-    "test": "node tests/rules.test.js && node tests/platform.test.js && node --test tests/gfx.test.js tests/i18n.test.js",
-    "test:e2e": "node tests/e2e.mjs && node tests/e2e-graphics.mjs",
-    "test:hosted": "node tests/hosted-smoke.mjs"
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node tests/rules.test.js && node --test tests/i18n.test.js tests/save.test.js tests/content.test.js",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "plays": "node tools/gen-plays.mjs",
+    "validate": "node tools/validate.js"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0"
