@@ -1,5 +1,17 @@
 # Known Issues — Shelf Shift
 
+## Engine port (2026-10-28)
+
+The browser client was replaced by a StarHermit engine client (native/*.ts, engine 1.20.1). The sections below
+describe the browser build; the rules, content, save model and server.js are unchanged. Port notes:
+
+- 🪴 is missing from StarHermit Emoji: the plant's icon shows 🌿 (reported).
+- The candle's sheen is not drawn by the engine.
+- The old build's moves popped the object at its source and showed it at the target at once (its syncState
+  dropped the moving mesh before reading the move event); the port plays the intended fly animation.
+- The colour grade runs before bloom (renderer.post), where the old composer graded after bloom.
+- Empty cells are picked by an invisible box over each inlay (the old build hit only the flat inlay).
+
 QA pass 2026-08-20. Static review driven by Qwen3.8 27B on spark185 (OBLITERATED Q8_0, 262k ctx),
 alongside the game's own unit tests and a headless-Chrome boot check.
 
