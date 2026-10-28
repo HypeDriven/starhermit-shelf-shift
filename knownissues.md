@@ -2,7 +2,7 @@
 
 ## Engine port (2026-10-28)
 
-The browser client was replaced by a StarHermit engine client (native/*.ts, engine 1.20.1). The sections below
+The browser client was replaced by a StarHermit engine client (native/*.ts, engine 1.22.0). The sections below
 describe the browser build; the rules, content, save model and server.js are unchanged. Port notes:
 
 - 🪴 is missing from StarHermit Emoji: the plant's icon shows 🌿 (reported).
