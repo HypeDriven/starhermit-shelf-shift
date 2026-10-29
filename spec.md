@@ -2,7 +2,7 @@
 
 Shelf Shift is a single-player shelf-organizing puzzle set in a warmly lit miniature boutique. The player moves
 objects between shelf cells and the front counter to form triples and fill customer orders while deliveries keep
-arriving. It is a StarHermit engine script game (engine 1.24.0, host API 1.22, `engine.minor=20`): one package,
+arriving. It is a StarHermit engine script game (engine 1.27.0, host API 1.29, `engine.minor=29`): one package,
 played natively by the StarHermit client and in browsers by the engine's web runtime.
 
 ## Rules (js/rules.js, unchanged)
