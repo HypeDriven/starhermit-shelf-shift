@@ -14,13 +14,13 @@
 // budgets) and the game's colour palette; the theme (Content.THEMES) tints
 // the room.
 //
-// From three.js r160 (physically based lights): colours as written, the
-// punctual and hemisphere lights' intensities ÷ π (the engine takes three's
-// legacy units). render3d.js's `new RoomEnvironment(renderer)` (r160) is kept
+// From three.js r160 (physically based lights): colours and intensities as
+// written (engine.minor 23+ takes r155+ light units). render3d.js's `new RoomEnvironment(renderer)` (r160) is kept
 // exactly; every lit material carries the environment as its own envMap at
 // its envMapIntensity, as r160's scene.environment applied each material's
 // intensity. The old composer (RenderPass in half floats → GTAO → UnrealBloom
-// 0.5 / 0.5 / 0.9 → the colour grade + vignette → OutputPass with ACES at
+// 0.5 / 0.5 / 0.9, its strength squared as r160's pass added less light than
+// r185's → the colour grade + vignette → OutputPass with ACES at
 // exposure 1.05 → SMAA / FXAA) is the runtime's renderer.ao / bloom / post /
 // antialias; the grade is the old shader in WGSL as renderer.post, which the
 // engine runs before bloom (the old one ran after it). The old canvas filled
@@ -32,7 +32,7 @@ import {
   ConeGeometry, CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, LatheGeometry,
   Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, PMREMGenerator,
   PointLight, Points, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, SRGBColorSpace,
-  TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
+  OrthographicCamera, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
 import { OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
 import { Content, RNG, type Loc, type GameEvent, type State, type Theme } from "./classic.ts";
@@ -451,18 +451,18 @@ const selGroup = new Group();
 scene.add(envGroup, boardGroup, itemGroup, selGroup);
 
 // warm directional key with shadows, hemisphere fill, rim, and (detailed) the pendant lamp's glow without shadows
-const keyLight = new DirectionalLight(0xffc98a, 2.4 / Math.PI);
+const keyLight = new DirectionalLight(0xffc98a, 2.4);
 keyLight.position.set(3.2, 9, 7.5);
 keyLight.castShadow = false;
 keyLight.shadow.bias = -0.0004;
-keyLight.shadow.normalBias = 1; // three's 0.02 world units; the engine's normal bias is in texels
+keyLight.shadow.normalBias = 0.02;
 keyLight.shadow.radius = 3;
 const keyTarget = new Object3D();
 keyLight.target = keyTarget;
-const fillLight = new HemisphereLight(0xfff0dd, 0x30221a, 0.9 / Math.PI);
-const rimLight = new DirectionalLight(0xffdcb0, 0.7 / Math.PI);
+const fillLight = new HemisphereLight(0xfff0dd, 0x30221a, 0.9);
+const rimLight = new DirectionalLight(0xffdcb0, 0.7);
 rimLight.position.set(-4, 5, -3);
-const LAMP = 14 / Math.PI;
+const LAMP = 14;
 const lampLight = new PointLight(0xffb866, LAMP, 0, 2);
 lampLight.position.set(0, 6.9, 1.2);
 lampLight.visible = false;
@@ -741,10 +741,28 @@ export function clearBoard(): void {
   frameKey = "";
 }
 
-/** render3d.js fitShadow: the key aims at the play area (the engine fits the shadow map to the view up to `distance`). */
+/** render3d.js fitShadow: the key's orthographic shadow box fitted around the play area (shelf unit, counter
+ * and the side crates), in light space. */
+const _sc = new OrthographicCamera();
+const _v = new Vector3();
 function fitShadow(): void {
+  const hw = boardDims.w / 2 + 2.6;
   keyTarget.position.set(0, boardDims.h * 0.45, 0.9);
   keyLight.position.set(keyTarget.position.x + 3.2, keyTarget.position.y + 7, keyTarget.position.z + 7.5);
+  _sc.position.copy(keyLight.position);
+  _sc.lookAt(keyTarget.position);
+  _sc.updateMatrixWorld(true);
+  const inv = _sc.matrixWorldInverse;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const x of [-hw, hw]) for (const y of [0, boardDims.h + 0.6]) for (const z of [-2.2, 3.6]) {
+    _v.set(x, y, z).applyMatrix4(inv);
+    x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x);
+    y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
+    z0 = Math.min(z0, _v.z); z1 = Math.max(z1, _v.z);
+  }
+  const c = keyLight.shadow.camera as OrthographicCamera;
+  c.left = x0; c.right = x1; c.bottom = y0; c.top = y1; c.near = Math.max(0.1, -z1 - 0.5); c.far = -z0 + 0.5;
+  c.updateProjectionMatrix();
 }
 
 function itemColor(type: string): number {
@@ -1011,15 +1029,15 @@ export function applyLook(next: Look): void {
   if (sm > 0) keyLight.shadow.mapSize = sm;
   keyLight.shadow.radius = sm === 4096 ? 4 : 3;
   // image-based lighting: with the room environment the hemisphere fill steps back
-  fillLight.intensity = (next.reflections ? 0.55 : 0.9) / Math.PI;
+  fillLight.intensity = next.reflections ? 0.55 : 0.9;
   // GTAO radius 0.45, distance exponent 1.4, thickness 1.2, 16 / 8 samples and the denoise per tier; blend 0.75
   const hi = next.ao === "high";
   renderer.ao = next.ao === "off" ? null : {
     blendIntensity: 0.75, radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: hi ? 16 : 8, radiusExponent: 2 },
   };
-  // UnrealBloomPass(0.5, 0.5, 0.9): only flames, lantern glass and lamp bulbs bloom
-  renderer.bloom = next.bloom ? { strength: 0.5, radius: 0.5, threshold: 0.9, resolution: next.budget.bloomRes } : null;
+  // UnrealBloomPass(0.5, 0.5, 0.9): only flames, lantern glass and lamp bulbs bloom (r160 strength squared for r185's pass)
+  renderer.bloom = next.bloom ? { strength: 0.5 * 0.5, radius: 0.5, threshold: 0.9, resolution: next.budget.bloomRes } : null;
   renderer.post = next.grade ? GRADE : null;
   renderer.grade = null;
   renderer.antialias = next.antialias;
@@ -1048,8 +1066,10 @@ let uiScale = 1;
 function fitCamera(): void {
   const pad = 8 * uiScale, padTop = Math.min(48 * uiScale, view.height * 0.08);
   const sx = view.x + pad, sy = view.y + padTop, sw = Math.max(1, view.width - pad * 2), sh = Math.max(1, view.height - pad - padTop);
+  camera.aspect = sw / sh;
   camera.setViewOffset(sw, sh, -sx, -sy, win.w, win.h);
-  const aspect = sw / sh;
+  camera.updateProjectionMatrix();
+  const aspect = camera.aspect;
   const t = Math.tan(((camera.fov / 2) * Math.PI) / 180);
   const vFit = (boardDims.h * 0.8) / t;
   const hFit = (boardDims.w * 0.72) / (t * aspect);
@@ -1058,7 +1078,6 @@ function fitCamera(): void {
   camTarget.set(0, boardDims.h * 0.5, 0.6);
   camera.position.copy(camBase);
   camera.lookAt(camTarget);
-  keyLight.shadow.distance = dist + 8;
 }
 
 /** Each frame: the framing to the uncovered rectangle, tweens, particles, ambient motion, the camera. */
