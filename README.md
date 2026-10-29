@@ -2,7 +2,7 @@
 
 A cozy boutique shelf-organizing puzzle. Move objects among shelf cells to form
 triples, clear requested orders, and keep the delivery counter from overflowing.
-A StarHermit engine script game (engine 1.23.0): played natively by the
+A StarHermit engine script game (engine 1.24.0): played natively by the
 StarHermit client and in browsers by the engine's web runtime (`index.html` is
 the engine's loader, written by `npm run package`).
 
