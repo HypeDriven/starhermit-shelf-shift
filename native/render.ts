@@ -1036,8 +1036,8 @@ export function applyLook(next: Look): void {
     blendIntensity: 0.75, radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: hi ? 16 : 8, radiusExponent: 2 },
   };
-  // UnrealBloomPass(0.5, 0.5, 0.9): only flames, lantern glass and lamp bulbs bloom (r160 strength squared for r185's pass)
-  renderer.bloom = next.bloom ? { strength: 0.5 * 0.5, radius: 0.5, threshold: 0.9, resolution: next.budget.bloomRes } : null;
+  // UnrealBloomPass(0.5, 0.5, 0.9): only flames, lantern glass and lamp bulbs bloom (r160 page: the engine's r160 bloom model at the page's strength)
+  renderer.bloom = next.bloom ? { model: "r160", strength: 0.5, radius: 0.5, threshold: 0.9, resolution: next.budget.bloomRes } : null;
   renderer.post = next.grade ? GRADE : null;
   renderer.grade = null;
   renderer.antialias = next.antialias;
