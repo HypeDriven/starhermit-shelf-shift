@@ -2,36 +2,20 @@
 // tests: the seeded streams (js/rng.js), the rules (js/rules.js), the content
 // (js/content.js: items, themes, the 40 Journey stages, challenges, practice
 // presets, Score chase, the Daily generator, the five lessons,
-// achievements), the save model (js/store.js: the versioned checksummed
-// document, its migration and the two-device merge, the local score boards)
-// and the string tables (js/locales/*.js, js/i18n.js, js/sh-strings.js),
+// achievements) and the save model (js/store.js: the versioned checksummed
+// document, its migration and the two-device merge, the local score boards),
 // evaluated as classic scripts so their globals (SSRNG, SSRules, SSContent,
-// SSStore, SSI18N, SSShStrings) are this module's exports.
+// SSStore) are this module's exports.
 //
-// js/store.js keeps its local score boards in `localStorage`: here that is a
-// small shim over the device's starhermit:storage, installed before the
-// scripts run. The progression itself is the engine save (platform.ts).
-import { storage } from "starhermit:storage";
+// js/store.js keeps its local score boards in `localStorage`: the engine's, over
+// the device's starhermit:storage (same keys), installed before the scripts run;
+// its setItem throws past limits, and store.js catches. The progression itself
+// is the engine save (platform.ts).
+import { installLocalStorage } from "starhermit:storage";
 import { loadClassic } from "starhermit:script";
 
-const shim = {
-  getItem(key: string): string | null {
-    try { return storage.getText(key); } catch { return null; }
-  },
-  setItem(key: string, value: string): void {
-    try { storage.set(key, String(value)); } catch (e) { console.warn(`storage ${key}: ${String(e)}`); }
-  },
-  removeItem(key: string): void {
-    try { storage.remove(key); } catch { /* gone */ }
-  },
-};
-(globalThis as unknown as { localStorage: typeof shim }).localStorage = shim;
-
-for (const f of [
-  "js/rng.js", "js/rules.js", "js/content.js", "js/store.js",
-  "js/locales/en-GB.js", "js/locales/es.js", "js/locales/de.js", "js/locales/fr.js", "js/locales/pt.js", "js/locales/it.js",
-  "js/i18n.js", "js/sh-strings.js", "js/migrate.js",
-]) loadClassic(f);
+installLocalStorage();
+for (const f of ["js/rng.js", "js/rules.js", "js/content.js", "js/store.js", "js/migrate.js"]) loadClassic(f);
 
 // -- The shapes this client reads -------------------------------------------------
 export type ItemType = string;
@@ -119,22 +103,16 @@ interface StoreApi {
 }
 export interface RngStream { next(): number; int(n: number): number; state: number }
 interface RngApi { derive(seed: number, stream: number): RngStream; create(state: number): RngStream; hashString(s: string): number; STREAM_DECOR: number; STREAM_AV: number }
-interface I18nApi {
-  LOCALES: string[]; T(key: string, vars?: Record<string, string | number> | null): string; setLocale(tag: string): void; getLang(): string;
-}
 interface MigrateApi {
   BROWSER_KEYS: string[]; legacyPreferences(kv: Record<string, unknown>): Partial<Settings>; isBrowserKey(key: string): boolean;
   fromBrowserSave(text: string | null): SaveDoc | null;
 }
-interface ShStringsApi { STRINGS: Record<string, Record<string, string>> }
 
 const g = globalThis as unknown as {
-  SSRules: RulesApi; SSContent: ContentApi; SSStore: StoreApi; SSRNG: RngApi; SSI18N: I18nApi; SSShStrings: ShStringsApi; SSMigrate: MigrateApi;
+  SSRules: RulesApi; SSContent: ContentApi; SSStore: StoreApi; SSRNG: RngApi; SSMigrate: MigrateApi;
 };
 export const Rules = g.SSRules;
 export const Content = g.SSContent;
 export const Store = g.SSStore;
 export const RNG = g.SSRNG;
-export const I18n = g.SSI18N;
-export const ShStrings = g.SSShStrings;
 export const Migrate = g.SSMigrate;

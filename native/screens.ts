@@ -31,14 +31,12 @@ import {
 // ------------------------------------------------------------------ layout
 interface Layout { lw: number; lh: number; sc: number; ts: number; phone: boolean; land: boolean; compact: boolean; ox: number; oy: number }
 function layoutNow(): Layout {
-  const f = frame();
   const p = ui.preferences();
-  const sc = p.scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const sc = v.scale, lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const land = lw > lh && lh <= 500;
   const phone = !land && lw <= 700 && lh >= lw;
-  return { lw, lh, sc, ts: p.textScale, phone, land, compact: lw < 1024, ox: sa.left, oy: sa.top };
+  return { lw, lh, sc, ts: p.textScale, phone, land, compact: lw < 1024, ox: v.x, oy: v.y };
 }
 const lastSize = new Map<string, ui.Rect>();
 const sizeOf = (id: string, sc: number): { w: number; h: number } | null => {
@@ -82,25 +80,14 @@ function button(b: Btn): void {
 }
 /** Buttons at their own widths in rows that wrap at `width` (flex-wrap). */
 function flow(label: string, list: Btn[], width: number, gap = 8, justify: "start" | "center" = "start"): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  const bw = (b: Btn): number => Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "btn"));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (const b of row) button({ ...b, width: bw(b) });
-    }, { spacing: gap, width, justify, align: "center" }));
-  }, { spacing: gap, width });
+  ui.row(label, () => {
+    for (const b of list) button({ ...b, width: Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "btn")) });
+  }, { wrap: true, width, gap, justify, align: "center" });
 }
 interface Box { x: number; y: number; w: number; h: number }
 const toWindow = (L: Layout, b: Box): ui.Rect => ({ x: L.ox + b.x * L.sc, y: L.oy + b.y * L.sc, width: b.w * L.sc, height: b.h * L.sc });
 
-/** Words wrapped to `maxPx` window pixels with draw.measureText (draw.text's own wrap breaks inside words). */
+/** Words wrapped to `maxPx` window pixels with draw.measureText (draw.text's centre + maxWidth doesn't centre each wrapped line until minor 38). */
 function wrapLines(text: string, maxPx: number, size: number, weight?: "bold" | "600"): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];

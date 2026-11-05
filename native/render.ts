@@ -31,7 +31,7 @@ import {
   ACESFilmicToneMapping, AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, ClampToEdgeWrapping, Color,
   ConeGeometry, CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, LatheGeometry,
   Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, PMREMGenerator,
-  PointLight, Points, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, SRGBColorSpace,
+  ParticleEmitter, PointLight, Points, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, SRGBColorSpace,
   OrthographicCamera, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
 import { OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
@@ -322,55 +322,29 @@ function applyMaps(): void {
   if (mats.counter instanceof MeshPhysicalMaterial) set(mats.counter, T?.wood);
 }
 
-// ---------- pooled particle bursts ----------
-class Particles {
-  readonly cap: number;
-  readonly pos: Float32Array; readonly vel: Float32Array; readonly life: Float32Array; readonly col: Float32Array;
-  readonly points: Points;
-  cursor = 0;
-  constructor(capacity: number) {
-    this.cap = capacity;
-    this.pos = new Float32Array(capacity * 3); this.vel = new Float32Array(capacity * 3);
-    this.life = new Float32Array(capacity); this.col = new Float32Array(capacity * 3);
-    for (let i = 0; i < capacity; i++) this.pos[i * 3 + 1] = -999;
-    const g = new BufferGeometry();
-    g.setAttribute("position", new BufferAttribute(this.pos, 3));
-    g.setAttribute("color", new BufferAttribute(this.col, 3));
-    this.points = new Points(g, new PointsMaterial({
-      size: 0.11, vertexColors: true, transparent: true, opacity: 0.95, map: softDot(),
-      depthWrite: false, sizeAttenuation: true, blending: AdditiveBlending,
-    }));
-    this.points.frustumCulled = false;
-    scene.add(this.points);
+// ---------- particle bursts (native emitters) ----------
+/** One emitter a colour and a throw: `color` is sampled for live particles too, so a shared emitter would recolour them. */
+const burstEmitters = new Map<string, ParticleEmitter>();
+function burstAt(p: Vector3, color: number, n: number, spread: number, up: number): void {
+  const key = `${color}:${spread}:${up}`;
+  let e = burstEmitters.get(key);
+  if (!e) {
+    e = new ParticleEmitter({
+      capacity: 400, seed: burstEmitters.size + 1, color, life: [0.7, 1.1], material: burstMaterial(),
+      velocity: [0, up / 2 + 0.8, 0], velocitySpread: [spread * 0.85, up / 2, spread * 0.42], gravity: [0, -4.5, 0],
+    });
+    e.frustumCulled = false;
+    scene.add(e);
+    burstEmitters.set(key, e);
   }
-  burst(p: Vector3, color: number, n: number, spread: number, up: number): void {
-    const c = new Color(color);
-    for (let k = 0; k < n; k++) {
-      const i = this.cursor; this.cursor = (this.cursor + 1) % this.cap;
-      this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
-      const a = Math.random() * Math.PI * 2, r = Math.random() * spread;
-      this.vel[i * 3] = Math.cos(a) * r;
-      this.vel[i * 3 + 1] = Math.random() * up + 0.8;
-      this.vel[i * 3 + 2] = Math.sin(a) * r * 0.5;
-      this.life[i] = 0.7 + Math.random() * 0.4;
-      this.col[i * 3] = c.r; this.col[i * 3 + 1] = c.g; this.col[i * 3 + 2] = c.b;
-    }
-    (this.points.geometry.attributes.color as BufferAttribute).needsUpdate = true;
-  }
-  tick(dt: number): void {
-    let any = false;
-    for (let i = 0; i < this.cap; i++) {
-      if (this.life[i]! <= 0) continue;
-      any = true;
-      this.life[i] = this.life[i]! - dt;
-      if (this.life[i]! <= 0) { this.pos[i * 3 + 1] = -999; continue; }
-      this.vel[i * 3 + 1] = this.vel[i * 3 + 1]! - 4.5 * dt;
-      this.pos[i * 3] = this.pos[i * 3]! + this.vel[i * 3]! * dt;
-      this.pos[i * 3 + 1] = this.pos[i * 3 + 1]! + this.vel[i * 3 + 1]! * dt;
-      this.pos[i * 3 + 2] = this.pos[i * 3 + 2]! + this.vel[i * 3 + 2]! * dt;
-    }
-    if (any) (this.points.geometry.attributes.position as BufferAttribute).needsUpdate = true;
-  }
+  e.burst(n, [p.x, p.y, p.z]);
+}
+let burstMat: PointsMaterial | null = null;
+function burstMaterial(): PointsMaterial {
+  return burstMat ??= new PointsMaterial({
+    size: 0.11, transparent: true, opacity: 0.95, map: softDot(),
+    depthWrite: false, sizeAttenuation: true, blending: AdditiveBlending,
+  });
 }
 
 /** Drifting dust motes in the lamp light. */
@@ -468,7 +442,6 @@ lampLight.position.set(0, 6.9, 1.2);
 lampLight.visible = false;
 scene.add(keyLight, keyTarget, fillLight, rimLight, lampLight);
 
-const particles = new Particles(800);
 const dust = new Dust(DUST_MAX);
 let lamps: Group[] = [];
 
@@ -839,11 +812,11 @@ export function syncState(state: State, events: GameEvent[], instant: boolean): 
       for (const c of ev.cells) { const cell = cellMeshes.get(`s:${ev.shelf}:${c}`); if (cell) { p.add(cell.pos); n++; } }
       if (n) {
         p.divideScalar(n);
-        particles.burst(p, itemColor(ev.item), Math.round((look?.particles === "low" ? 10 : 24) * (look?.budget.burst ?? 1)), 1.6, 1.8);
+        burstAt(p, itemColor(ev.item), Math.round((look?.particles === "low" ? 10 : 24) * (look?.budget.burst ?? 1)), 1.6, 1.8);
       }
       if (!reducedMotion) camShake = Math.max(camShake, 0.06);
     } else if (ev.type === "win") {
-      particles.burst(new Vector3(0, boardDims.h * 0.6, 0.5), 0xffd070, Math.round((look?.particles === "low" ? 30 : 80) * (look?.budget.burst ?? 1)), 3.2, 2.6);
+      burstAt(new Vector3(0, boardDims.h * 0.6, 0.5), 0xffd070, Math.round((look?.particles === "low" ? 30 : 80) * (look?.budget.burst ?? 1)), 3.2, 2.6);
       if (!reducedMotion) camShake = Math.max(camShake, 0.12);
     } else if (ev.type === "lose") {
       if (!reducedMotion) camShake = Math.max(camShake, 0.15);
@@ -1027,17 +1000,17 @@ export function applyLook(next: Look): void {
   renderer.shadowMap.enabled = sm > 0;
   keyLight.castShadow = sm > 0;
   if (sm > 0) keyLight.shadow.mapSize = sm;
-  keyLight.shadow.radius = sm === 4096 ? 4 : 3;
+  keyLight.shadow.radius = sm >= 4096 ? 4 : 3;
   // image-based lighting: with the room environment the hemisphere fill steps back
   fillLight.intensity = next.reflections ? 0.55 : 0.9;
   // GTAO radius 0.45, distance exponent 1.4, thickness 1.2, 16 / 8 samples and the denoise per tier; blend 0.75
-  const hi = next.ao === "high";
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.75, radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: hi ? 16 : 8, radiusExponent: 2 },
+  const ao = next.ao, hi = !!ao && ao.resolution >= 1; // the engine's AO quality: resolution under 1 is "on", 1 is "high"
+  renderer.ao = !ao ? null : {
+    blendIntensity: 0.75, radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // UnrealBloomPass(0.5, 0.5, 0.9): only flames, lantern glass and lamp bulbs bloom (r160 page: the engine's r160 bloom model at the page's strength)
-  renderer.bloom = next.bloom ? { model: "r160", strength: 0.5, radius: 0.5, threshold: 0.9, resolution: next.budget.bloomRes } : null;
+  renderer.bloom = next.bloom === null ? null : { model: "r160", strength: 0.5, radius: 0.5, threshold: 0.9, resolution: next.bloom };
   renderer.post = next.grade ? GRADE : null;
   renderer.grade = null;
   renderer.antialias = next.antialias;
@@ -1080,7 +1053,7 @@ function fitCamera(): void {
   camera.lookAt(camTarget);
 }
 
-/** Each frame: the framing to the uncovered rectangle, tweens, particles, ambient motion, the camera. */
+/** Each frame: the framing to the uncovered rectangle, tweens, ambient motion, the camera. */
 export function update(dt: number, w: number, h: number, rect: Rect, scale: number): void {
   dt = Math.min(0.05, dt);
   const fk = `${w}x${h}:${Math.round(rect.x)}:${Math.round(rect.y)}:${Math.round(rect.width)}:${Math.round(rect.height)}:${scale}`;
@@ -1093,7 +1066,6 @@ export function update(dt: number, w: number, h: number, rect: Rect, scale: numb
   }
   textureStep();
   tweens.tick(dt);
-  particles.tick(dt);
   const glow = glowMats[detailKey()];
   const base = look?.detailed ? 2.2 : 1.6;
   if (look?.animated && !reducedMotion) {

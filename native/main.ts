@@ -17,7 +17,7 @@
 // clock advanced 1/60 s per fixed step (the browser build used
 // performance.now and setTimeout), so slow frames never change a round and
 // play scripts replay exactly.
-import { clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { afterRender, clipboard, createTimers, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { onAction, onPointerButton, onPointerMove, onTouch, primaryPointer, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
@@ -72,9 +72,9 @@ let cmdCounter = 0;
 let clockMs = 0;
 export const now = (): number => clockMs;
 export const fresh = (): boolean => frame().frame !== app.openedFrame;
-const timers: { at: number; fn: () => void }[] = [];
+const timers = createTimers();
 /** setTimeout on the fixed-step clock. */
-function after(ms: number, fn: () => void): void { timers.push({ at: clockMs + ms, fn }); }
+function after(ms: number, fn: () => void): void { timers.after(ms / 1000, fn); }
 
 // ------------------------------------------------------------------ helpers
 const spoken: string[] = [];
@@ -108,9 +108,8 @@ function haptic(pattern: number | number[]): void {
   const ms = Array.isArray(pattern) ? pattern.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) : pattern;
   try { vibrate(ms); } catch { /* none */ }
 }
-const pending: (() => void)[] = [];
 /** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets). */
-export function later(fn: () => void): void { pending.push(fn); }
+export function later(fn: () => void): void { afterRender(fn); }
 export const settings = (): Settings => platform.settings();
 export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): void {
   settings()[key] = value;
@@ -759,20 +758,16 @@ onFixedUpdate(() => {
   if (hidden) return;
   clockMs += 1000 / 60;
   if (session.active && !session.paused && !session.state?.terminal) session.elapsedMs += 1000 / 60;
-  for (let i = 0; i < timers.length; i++) {
-    const t = timers[i]!;
-    if (clockMs >= t.at) { timers.splice(i--, 1); t.fn(); }
-  }
+  timers.advance(1 / 60);
 });
 
 // ------------------------------------------------------------------ boot and lifecycle
 let lookKey = "";
 function applyLook(): void {
   const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  if (f.level === lookKey) return;
+  lookKey = f.level;
+  render.applyLook(lookFor(levelSettings(f.level)));
 }
 onStart(() => {
   setFixedRate(60);
@@ -821,7 +816,6 @@ onUpdate((dt) => {
 onRender(() => {
   const wasPlaying = playing();
   drawScreens();
-  for (const fn of pending.splice(0)) fn();
   pointerInput(wasPlaying);
   const f = frame();
   render.update(frameDt, f.width, f.height, view, ui.preferences().scale);

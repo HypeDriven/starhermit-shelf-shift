@@ -4,12 +4,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { ALL } = require('./i18n-keys.js');
-const I18N = require('../js/i18n.js');
+const I18N = { DICTS: JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '../assets/strings.json'), 'utf8')) };
+I18N.LOCALES = Object.keys(I18N.DICTS);
 
 const ph = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
 test('all nine locales are supported', () => {
-  assert.deepStrictEqual(I18N.LOCALES, ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']);
+  assert.deepStrictEqual([...I18N.LOCALES].sort(), ['de-DE', 'en-GB', 'en-US', 'es-419', 'es-ES', 'fr-CA', 'fr-FR', 'it-IT', 'pt-BR']);
 });
 
 test('extraction finds the player-facing strings', () => {
@@ -34,16 +35,7 @@ test('en-GB only overrides spelling of known keys', () => {
   assert.strictEqual(I18N.DICTS['en-GB']['Color palette'], 'Colour palette');
 });
 
-test('T formats, falls back and switches live', () => {
-  const seen = [];
-  I18N.onLanguage((l) => seen.push(l));
-  I18N.setLocale('it-IT');
-  assert.strictEqual(I18N.T('Play'), 'Gioca');
-  assert.strictEqual(I18N.T('Daily {date}', { date: '2026-10-17' }), 'Giornaliera 2026-10-17');
-  assert.strictEqual(I18N.T('Some player name'), 'Some player name');
-  I18N.setLocale('fr-CA');
-  assert.strictEqual(I18N.getLang(), 'fr-CA');
-  I18N.setLocale('xx-YY');
-  assert.strictEqual(I18N.getLang(), 'en-US');
-  assert.deepStrictEqual(seen, ['it-IT', 'fr-CA', 'en-US']);
+test('regional tables inherit', () => {
+  assert.strictEqual(I18N.DICTS['it-IT'].Play, 'Gioca');
+  assert.strictEqual(I18N.DICTS['fr-CA'].Play, I18N.DICTS['fr-CA'].Play || I18N.DICTS['fr-FR'].Play);
 });

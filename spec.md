@@ -87,12 +87,12 @@ centred; narrower orders under 1024 px). The camera frames the board in the rect
   marker rings, the eight procedural objects, lift / fly / drop / pop tweens, particle bursts, dust motes, flicker
   and lamp sway, pointer parallax and shake. Lights are r160's ÷ π; `RoomEnvironment(renderer)` as each lit
   material's own envMap at its old intensity; ACES at exposure 1.05.
-- Quality tiers follow the browser build's presets (native/quality.ts): Low (no shadows, no environment, plain
-  surfaces, MSAA), Balanced (1024 shadows, environment, procedural textures at half size, bloom, the grade, FXAA),
-  High (2048 shadows, GTAO, clear-coated ceramics, SMAA), Ultra (4096 shadows, full-resolution GTAO and bloom,
-  double-size textures, MSAA); dust and burst density scale within a tier by the graphics level.
+- Shadows, GTAO, bloom, the grade and anti-aliasing come from the engine's level table (`levelSettings()`); the art
+  follows the browser build's presets (native/quality.ts): Low (no environment, plain surfaces), Balanced (environment,
+  procedural textures at half size), High (clear-coated ceramics), Ultra (double-size textures); dust and burst density
+  scale within a tier by the level's particle budget.
 - The old colour grade + vignette runs as `renderer.post` (before bloom, where the old composer graded after it).
-- Sound: the 13 authored clips (sfx/), a looped room tone and the generative chord pad rendered into clips.
+- Sound: the 13 authored clips (sfx/), a looped room tone and the generative chord pad rendered natively into clips (OfflineAudioContext).
 
 ## Platform
 
