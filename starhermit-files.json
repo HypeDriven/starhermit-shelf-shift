@@ -3,7 +3,7 @@
     "assets/ui-style.json": {"sha256": "d9abe76b1763d0f8da8f9cc953afcaec2c5b48a894df9e1ac7700a4d32997bc1", "size": 15993},
     "cover.jpg": {"sha256": "526ad839f2b92fb7fd073226cffac06618b57a8730a28347bac66622bdf053ec", "size": 189751},
     "icon.png": {"sha256": "de147455f093c6b43f72bbdf662e261d9896d2dbec9d21c75ad5e0c8c23e40ed", "size": 5256},
-    "index.html": {"sha256": "50d582fafdff6bdc7538d5f33dbc4ae803dc2c75f5ccfbbff8be6996f0106a11", "size": 1778},
+    "index.html": {"sha256": "69c2079e6ade5001687827e3246b84403a4d3dc77600d752cdf0c4b29f98ffce", "size": 1936},
     "js/content.js": {"sha256": "412188f0ff4ea308e8869a3fe9649c229a1eabb72b2b7ee2d9bf207ae0b59913", "size": 21065},
     "js/i18n.js": {"sha256": "502f7b8adbe94e5563f4b23ccdf72fb38679cf54f8b3343e86101632b6df0899", "size": 4346},
     "js/locales/de.js": {"sha256": "cea2494ae31f940719389733747b66c5a8d1814316ccb4a49e6bd30b39dea28f", "size": 19656},
@@ -40,8 +40,8 @@
     "sfx/triple-chime.opus": {"sha256": "da5751a7bf2ec9ecf7548ad4fb9e9d2b50f109414b1fb4fb7da4fb92bb45b326", "size": 32148},
     "sfx/ui-tick.opus": {"sha256": "5ce0774a0912fa19ab2885b8108f80a1b82bd8c03384bb89b33d5e0fb44549d8", "size": 11097},
     "sfx/undo-swoosh.opus": {"sha256": "a696026c8ba0a99d6871d26fbaf9e69ed4dc9ce7533dd9c0c7743f3d1b6b033b", "size": 12670},
-    "starhermit.txt": {"sha256": "ff85de0d7f4fd0aa289ee42abbf83cf10bf9f2570856327ef1f631ff7ed183a0", "size": 2015}
+    "starhermit.txt": {"sha256": "820fbb86f9a5767485b3fc62b5ed4a3be950c8163d3b6be3c7ae1e88182b92a3", "size": 2015}
   },
-  "excluded": ["LICENSE.md", "README.md", "coverart.png", "knownissues.md", "node_modules/", "package-lock.json", "package.json", "server.js", "sfx/manifest.json", "sfx/manifest.md", "spec.md", "tests/", "tools/", "tsconfig.json"],
+  "excluded": ["LICENSE.md", "README.md", "coverart.png", "knownissues.md", "package-lock.json", "package.json", "server.js", "sfx/manifest.json", "sfx/manifest.md", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1
 }
