@@ -10,7 +10,7 @@ I18N.LOCALES = Object.keys(I18N.DICTS);
 const ph = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
 test('all nine locales are supported', () => {
-  assert.deepStrictEqual([...I18N.LOCALES].sort(), ['de-DE', 'en-GB', 'en-US', 'es-419', 'es-ES', 'fr-CA', 'fr-FR', 'it-IT', 'pt-BR']);
+  assert.deepStrictEqual([...I18N.LOCALES].sort(), ['bew-ID', 'ca-ES', 'ca-FR', 'ca-IT', 'co-FR', 'da-DE', 'de-BE', 'de-BR', 'de-DE', 'de-IT', 'en-BQ', 'en-GB', 'en-HK', 'en-SG', 'en-US', 'es-419', 'es-AR', 'es-CL', 'es-CO', 'es-EC', 'es-ES', 'et-EE', 'eu-ES', 'eu-FR', 'fi-FI', 'fr-BE', 'fr-CA', 'fr-FR', 'fr-IT', 'fur-IT', 'gl-ES', 'id-ID', 'it-IT', 'ja-JP', 'km-VN', 'lb-BE', 'ms-SG', 'nl-BE', 'nl-NL', 'oc-FR', 'oc-IT', 'pt-BR', 'ru-EE', 'ru-FI', 'sl-IT', 'su-ID', 'sv-FI', 'ta-SG', 'vi-VN', 'yue-HK', 'zh-HK', 'zh-SG']);
 });
 
 test('extraction finds the player-facing strings', () => {

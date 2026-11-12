@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Shelf Shift on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (js/rules.js), content
@@ -813,11 +814,15 @@ onUpdate((dt) => {
   if (app.caption && app.caption.until <= clockMs) app.caption = null;
   app.toasts = app.toasts.filter((x) => x.until > clockMs);
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   const wasPlaying = playing();
   drawScreens();
   pointerInput(wasPlaying);
   const f = frame();
   render.update(frameDt, f.width, f.height, view, ui.preferences().scale);
   flushAnnouncements();
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

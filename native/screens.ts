@@ -1,3 +1,8 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
+import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
+// localization-runtime:attached
+import { localizedFont as __l10nFont } from "./l10n/font.ts";
+import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
 // The browser build's DOM shell (index.html + js/ui.js + css/style.css) as
 // starhermit:ui, built every frame over the boutique: the HUD (the top bar
 // with Pause, the round's name and clock, score, streak and moves; the
@@ -12,7 +17,21 @@
 // the orders bottom-left, the banner a left column) and desktop (compact
 // under 1024 px). The rectangle the HUD leaves uncovered (render3d.js
 // safeRect) goes to main.ts (view → render.ts).
-import { frame, openMenu } from "starhermit:engine";
+// The browser build's DOM shell (index.html + js/ui.js + css/style.css) as
+// starhermit:ui, built every frame over the boutique: the HUD (the top bar
+// with Pause, the round's name and clock, score, streak and moves; the
+// Orders rail; the action tray — Undo, Hint, Skip, View; the message pill;
+// the lesson banner; the visible board controls when that setting is on),
+// named targets over every cell (the old board mirror's buttons: screen
+// readers and play scripts find them), the toast and caption, and every
+// screen (title, modes, setup, journey, learn, pause, results, settings,
+// help, profile, scores). The old media queries are layouts picked by the
+// window's logical size: phone portrait (≤ 700 px wide, portrait: the tray a
+// bottom bar, the orders under the top bar), short landscape (≤ 500 px tall:
+// the orders bottom-left, the banner a left column) and desktop (compact
+// under 1024 px). The rectangle the HUD leaves uncovered (render3d.js
+// safeRect) goes to main.ts (view → render.ts).
+import { frame } from "starhermit:engine";
 import { bindings, requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
@@ -49,7 +68,7 @@ function textWidth(text: string, style: string, kind?: "button" | "heading"): nu
 /** Text up to `width` wide: one label when it fits, else a paragraph. */
 function para(text: string, width: number, cls = "text", id?: string): void {
   if (!text) return;
-  let u = ui.style(cls);
+  let u = ui.style(__l10nStyle(cls));
   if (id) u = u.id(id);
   if (textWidth(text, cls) <= width) u.label(text);
   else u.paragraph(text, Math.max(20, width));
@@ -69,12 +88,12 @@ function button(b: Btn): void {
     // a label wider than its button wraps (labels don't)
     const inner = b.width - 34;
     const ink = style === "btn-primary" || style === "btn-big";
-    opts.content = () => { ui.style(ink ? "wrap-ink" : "wrap").paragraph(b.text, Math.max(20, inner)); };
-  } else if (b.name && b.name !== b.text) opts.content = () => { ui.style(style === "btn-primary" || style === "btn-big" ? "wrap-ink" : "wrap").label(b.text); };
+    opts.content = () => { ui.style(__l10nStyle(ink ? "wrap-ink" : "wrap")).paragraph(b.text, Math.max(20, inner)); };
+  } else if (b.name && b.name !== b.text) opts.content = () => { ui.style(__l10nStyle(style === "btn-primary" || style === "btn-big" ? "wrap-ink" : "wrap")).label(b.text); };
   const s: ui.Style = {};
   if (b.width != null) s.width = b.width;
   if (b.height != null) s.height = b.height;
-  if (ui.style(style, s).id(b.id).button(b.name ?? b.text, opts) && fresh()) {
+  if (ui.style(__l10nStyle(style), __l10nStyle(s)).id(b.id).button(b.name ?? b.text, opts) && fresh()) {
     later(() => { if (!b.quiet) sound("ui"); b.act(); });
   }
 }
@@ -94,7 +113,7 @@ function wrapLines(text: string, maxPx: number, size: number, weight?: "bold" | 
   let cur = "";
   for (const w of words) {
     const next = cur ? `${cur} ${w}` : w;
-    if (cur && draw.measureText(next, { size, font: "sans-serif", ...(weight ? { weight } : {}) }).width > maxPx) { lines.push(cur); cur = w; }
+    if (cur && draw.measureText(next, __l10nDrawOptions({ size, font: __l10nFont("sans-serif"), ...(weight ? { weight } : {}) })).width > maxPx) { lines.push(cur); cur = w; }
     else cur = next;
   }
   if (cur) lines.push(cur);
@@ -108,7 +127,7 @@ function passivePill(id: string, L: Layout, text: string, cx: number, bottom: nu
   const px = size * L.sc * L.ts;
   const maxPx = (maxW - 2 * padX) * L.sc;
   const lines = wrapLines(text, maxPx, px, weight);
-  const widest = Math.max(...lines.map((l) => draw.measureText(l, { size: px, font: "sans-serif", ...(weight ? { weight } : {}) }).width));
+  const widest = Math.max(...lines.map((l) => draw.measureText(l, __l10nDrawOptions({ size: px, font: __l10nFont("sans-serif"), ...(weight ? { weight } : {}) })).width));
   const lineH = px * 1.25;
   const w = Math.min(maxW, widest / L.sc + 2 * padX + 2), h = (lines.length * lineH) / L.sc + 2 * padY;
   ui.place(id, { anchor: "top-start", x: cx - w / 2, y: bottom - h }, () => {
@@ -116,7 +135,7 @@ function passivePill(id: string, L: Layout, text: string, cx: number, bottom: nu
       role: "none", size: { width: w, height: h },
       draw: (r) => {
         draw.box(r.x, r.y, r.width, r.height, cls);
-        lines.forEach((ln, i) => draw.text(ln, r.x + r.width / 2, r.y + padY * L.sc + i * lineH, { size: px, color, align: "center", font: "sans-serif", ...(weight ? { weight } : {}) }));
+        lines.forEach((ln, i) => draw.text(ln, r.x + r.width / 2, r.y + padY * L.sc + i * lineH, __l10nDrawOptions({ size: px, color, align: "center", font: __l10nFont("sans-serif"), ...(weight ? { weight } : {}) })));
       },
     });
   });
@@ -212,7 +231,7 @@ function hudLayer(L: Layout): void {
 function topBarH(_L: Layout): number { return TOP_H; }
 function paintTrayBand(L: Layout, tray: Box): void {
   ui.place("tray-band", { anchor: "top-start", x: 0, y: tray.y }, () => {
-    ui.style("tray-band").widget("", { role: "none", size: { width: L.lw, height: tray.h } });
+    ui.style(__l10nStyle("tray-band")).widget("", { role: "none", size: { width: L.lw, height: tray.h } });
   });
 }
 /** #hud-top: Pause, the round's name and clock; score, streak, moves. */
@@ -223,23 +242,23 @@ function topBar(L: Layout, top: Box, st: NonNullable<typeof session.state>): voi
       button({ id: "btn-pause", text: "⏸", name: T("Pause (P)"), style: "btn-icon", act: () => pauseRound(), width: 44, height: 44,
         content: () => drawPauseGlyph() });
       ui.column("hud-objective", () => {
-        ui.style("hud-name").id("hud-mode-name").label(cfgName(session.cfg, session.mode));
+        ui.style(__l10nStyle("hud-name")).id("hud-mode-name").label(cfgName(session.cfg, session.mode));
         let timer: string, low = false;
         if (cfg.timeLimitSec) {
           const left = cfg.timeLimitSec * 1000 - session.elapsedMs;
           timer = `⏱ ${fmtTime(left)}`;
           low = left < 20000;
         } else timer = fmtTime(session.elapsedMs);
-        ui.style(low ? "hud-timer-low" : "hud-timer").id("hud-timer").label(timer);
+        ui.style(__l10nStyle(low ? "hud-timer-low" : "hud-timer")).id("hud-timer").label(timer);
       }, { spacing: 0 });
     }, { spacing: 10, align: "center" });
   });
   const statsW = sizeOf("hud-stats", L.sc)?.w ?? 160;
   ui.place("hud-stats", { anchor: "top-start", x: L.lw - 12 - statsW, y: 8 }, () => {
     lastSize.set("hud-stats", ui.row("hud-stats-row", () => {
-      ui.style("hud-stat").id("hud-score").label(String(currentScore(st)));
-      if (st.streak > 1) ui.style("streak").id("hud-streak").label(`🔥 ${st.streak}`);
-      ui.style("hud-stat").id("hud-moves").label(cfg.moveLimit ? T("moves {n}/{limit}", { n: st.moves, limit: cfg.moveLimit }) : T("moves {n}", { n: st.moves }));
+      ui.style(__l10nStyle("hud-stat")).id("hud-score").label(String(currentScore(st)));
+      if (st.streak > 1) ui.style(__l10nStyle("streak")).id("hud-streak").label(`🔥 ${st.streak}`);
+      ui.style(__l10nStyle("hud-stat")).id("hud-moves").label(cfg.moveLimit ? T("moves {n}/{limit}", { n: st.moves, limit: cfg.moveLimit }) : T("moves {n}", { n: st.moves }));
     }, { spacing: 16, align: "center" }));
   });
   void top;
@@ -260,14 +279,14 @@ function ordersRail(L: Layout, box: Box, st: NonNullable<typeof session.state>):
   const small = L.land;
   ui.place("hud-orders", { anchor: "top-start", x: box.x, y: box.y }, () => {
     const r = ui.column("orders", () => {
-      ui.style("orders-h").id("orders-h").label(T("Orders"));
+      ui.style(__l10nStyle("orders-h")).id("orders-h").label(T("Orders"));
       for (const ty of Object.keys(st.cfg.orders)) {
         const need = st.cfg.orders[ty]!, have = Math.min(st.orders[ty] || 0, need);
         const done = have >= need;
         const text = `${T(Content.ITEMS[ty]!.label)} ${have}/${need}`;
         ui.row(`ord-${ty}`, () => {
-          ui.style("ord-icon", small ? { text: { size: 16 } } : null).label(icon(ty));
-          ui.style(done ? "ord-done" : "ord-text", small ? { text: { size: 13.6 } } : null).id(`ord-${ty}-t`).label(text);
+          ui.style(__l10nStyle("ord-icon"), __l10nStyle(small ? { text: { size: 16 } } : null)).label(icon(ty));
+          ui.style(__l10nStyle(done ? "ord-done" : "ord-text"), __l10nStyle(small ? { text: { size: 13.6 } } : null)).id(`ord-${ty}-t`).label(text);
           const bar = Math.max(12, box.w - 28 - 10 - 8 - 12 - textWidth(text, done ? "ord-done" : "ord-text") - 24);
           ui.widget("", {
             role: "none", size: { width: bar, height: 6 },
@@ -296,8 +315,8 @@ function actionTray(L: Layout, box: Box): void {
     button({
       id, text: T(name), name: T(name), style: "btn-icon", act, disabled, width: L.phone ? 56 : 50, quiet: true,
       content: () => ui.column(`${id}-face`, () => {
-        ui.style("btn-glyph").label(glyph);
-        ui.style("btn-sub").label(T(sub));
+        ui.style(__l10nStyle("btn-glyph")).label(glyph);
+        ui.style(__l10nStyle("btn-sub")).label(T(sub));
       }, { spacing: 2, align: "center" }),
     });
   };
@@ -329,8 +348,8 @@ function lessonBanner(L: Layout, box: Box): void {
         }, { spacing: 10, align: "center", width: iw });
         return;
       }
-      ui.style("lesson-title", { text: { size: small } }).id("lesson-title").paragraph(title, iw);
-      ui.style("text", { text: { size: small } }).id("lesson-text").paragraph(T(lesson.text), iw);
+      ui.style(__l10nStyle("lesson-title"), __l10nStyle({ text: { size: small } })).id("lesson-title").paragraph(title, iw);
+      ui.style(__l10nStyle("text"), __l10nStyle({ text: { size: small } })).id("lesson-text").paragraph(T(lesson.text), iw);
       flow("lesson-actions", [
         { id: "lesson-toggle", text: T("Hide"), style: "btn-ghost", act: () => { app.bannerCollapsed = true; } },
         { id: "lesson-quit", text: T("Exit lesson"), style: "btn-ghost", act: exitLesson },
@@ -380,14 +399,14 @@ function boardMirror(L: Layout, tray: Box): void {
     const r = ui.column("mirror", () => {
       for (const row of rows) {
         ui.row(`mirror-${row.label}`, () => {
-          ui.style("mirror-label", { width: 66 }).label(row.label);
+          ui.style(__l10nStyle("mirror-label"), __l10nStyle({ width: 66 })).label(row.label);
           for (const loc of row.cells) {
             const item = Rules.getCell(s, loc);
             const sel = !!selected && Rules.locEq(loc, selected);
             const ok = !!selected && legalTarget(loc);
             const name = cellName(loc, item);
-            const res = ui.style(ok ? "cell-ok" : "cell-btn").id(`mirror-${locKey(loc)}`).button(name, {
-              selected: sel, content: () => ui.style("cell-text").label(item ? icon(item) : "·"),
+            const res = ui.style(__l10nStyle(ok ? "cell-ok" : "cell-btn")).id(`mirror-${locKey(loc)}`).button(name, {
+              selected: sel, content: () => ui.style(__l10nStyle("cell-text")).label(item ? icon(item) : "·"),
             });
             if (res && fresh()) later(() => tapCell(loc));
             if (ui.focused() === name) later(() => setCursorTo(loc));
@@ -423,7 +442,7 @@ function screenLayer(L: Layout): void {
   const opening = frame().frame - app.openedFrame <= 6;
   const footer = footerOf(s);
   const footH = footer ? (sizeOf(`${key}-foot`, L.sc)?.h ?? 52) + 12 : 0;
-  const isOpen = ui.style(OVERLAY[s] ? "" : "dialog-clear").dialog(panelLabel(s), "", true, () => {
+  const isOpen = ui.style(__l10nStyle(OVERLAY[s] ? "" : "dialog-clear")).dialog(panelLabel(s), "", true, () => {
     ui.column("panel", () => {
       const iw = inner - (scroll ? 14 : 0);
       const body = (): void => { lastSize.set(key, ui.column(`${key}-in`, () => buildPanel(s, iw, L), { spacing: 12, width: iw })); };
@@ -501,8 +520,8 @@ function titleCard(L: Layout): void {
   ui.place("title", { anchor: "top-start", x: (L.lw - w) / 2, y: Math.max(12, (L.lh - h) / 2) }, () => {
     const r = ui.column("title-card", () => {
       const size = Math.min(72, Math.max(38.4, 0.08 * L.lw));
-      ui.style("h1", { text: { size } }).id("title-h").label("Shelf Shift");
-      ui.style("tagline").id("tagline").paragraph(T("A cozy boutique sorting puzzle"), Math.min(w, 560));
+      ui.style(__l10nStyle("h1"), __l10nStyle({ text: { size } })).id("title-h").label("Shelf Shift");
+      ui.style(__l10nStyle("tagline")).id("tagline").paragraph(T("A cozy boutique sorting puzzle"), Math.min(w, 560));
       if (status) para(status, w, "mini", "platform-status");
       const acct: Btn[] = [];
       if (!platform.signedIn()) acct.push({ id: "btn-signin", text: S("signIn"), style: "btn-ghost", act: signIn });
@@ -511,7 +530,7 @@ function titleCard(L: Layout): void {
       button({ id: "btn-play", text: T("Play"), style: "btn-big", act: () => show("modes") });
       const sub = (id: string, main: string, mini: string, act: () => void): Btn => ({
         id, text: mini ? `${main} ${mini}` : main, name: main, act,
-        content: () => ui.row(`${id}-face`, () => { ui.style("text").label(main); if (mini) ui.style("mini").label(mini); }, { spacing: 6, align: "center" }),
+        content: () => ui.row(`${id}-face`, () => { ui.style(__l10nStyle("text")).label(main); if (mini) ui.style(__l10nStyle("mini")).label(mini); }, { spacing: 6, align: "center" }),
       });
       flow("title-secondary", [
         sub("btn-daily", T("Daily challenge"), dailyCountdownText(), () => openMode("daily")),
@@ -550,7 +569,7 @@ function card(id: string, title: string, desc: string, w: number, act: () => voi
   button({
     id, text: title, name: title, style: "btn-mode", width: w, act,
     content: () => ui.column(`${id}-face`, () => {
-      ui.style("mode-name").label(title);
+      ui.style(__l10nStyle("mode-name")).label(title);
       para(desc, iw, "mini");
     }, { spacing: 2, width: iw }),
   });
@@ -653,8 +672,8 @@ function journeyPanel(w: number): void {
             id: `stage-${i + 1}`, text: name, name, style: lvl.mastery ? "level-mastery" : "level-cell", width: cw, height: cw, disabled: !unlocked,
             act: () => startRound(lvl),
             content: () => ui.column(`stage-${i + 1}-face`, () => {
-              ui.style("lvl-num").label(String(i + 1));
-              ui.style("lvl-stars").label("★".repeat(stars) + "☆".repeat(Math.max(0, 3 - stars)));
+              ui.style(__l10nStyle("lvl-num")).label(String(i + 1));
+              ui.style(__l10nStyle("lvl-stars")).label("★".repeat(stars) + "☆".repeat(Math.max(0, 3 - stars)));
             }, { spacing: 0, align: "center" }),
           });
         }
@@ -707,17 +726,17 @@ function resultsPanel(w: number): void {
       ui.row(`res-${key}`, () => {
         para(T(label), w - numW - noteW - 30, "text", `res-${key}-k`);
         ui.spacer();
-        if (note) ui.style("mini", { width: noteW, text: { align: "end" } }).label(note);
-        ui.style("num", { width: numW }).id(`res-${key}-v`).label(String(val));
+        if (note) ui.style(__l10nStyle("mini"), __l10nStyle({ width: noteW, text: { align: "end" } })).label(note);
+        ui.style(__l10nStyle("num"), __l10nStyle({ width: numW })).id(`res-${key}-v`).label(String(val));
       }, { style: "row-line", width: w, align: "center", spacing: 8 });
     }
     ui.row("res-total", () => {
-      ui.style("total").label(T("Total"));
+      ui.style(__l10nStyle("total")).label(T("Total"));
       ui.spacer();
-      ui.style("num-total", { width: numW }).id("res-total-v").label(String(r.score.total));
+      ui.style(__l10nStyle("num-total"), __l10nStyle({ width: numW })).id("res-total-v").label(String(r.score.total));
     }, { style: "row-total", width: w, align: "center" });
   }, { spacing: 0, width: w });
-  if (r.stars) ui.style("stars").id("results-stars").label("★".repeat(r.stars) + "☆".repeat(3 - r.stars));
+  if (r.stars) ui.style(__l10nStyle("stars")).id("results-stars").label("★".repeat(r.stars) + "☆".repeat(3 - r.stars));
   if (r.newAchievements.length) {
     ui.column("results-achievements", () => {
       r.newAchievements.forEach((a, i) => ui.column(`res-ach-${i}`, () => para(`🏆 ${T(a.name)} — ${T(a.desc)}`, w - 22, "text"), { style: "ach", width: w }));
@@ -744,7 +763,7 @@ function toggleRow(id: string, label: string, on: boolean, w: number, set: (v: b
         const s = st.scale, box = 22 * s, bx = r.x + (r.width - box) / 2, by = r.y + (r.height - box) / 2;
         draw.roundRect(bx, by, box, box, 4, on ? token("accent-2") : token("panel-2"));
         draw.strokeRoundRect(bx, by, box, box, 4, on ? token("accent-2") : "#ffffff66", 2);
-        if (on) draw.text("✓", bx + box / 2, by + 1 * s, { size: 17 * s, color: token("primary-ink"), align: "center", weight: "bold" });
+        if (on) draw.text("✓", bx + box / 2, by + 1 * s, __l10nDrawOptions({ size: 17 * s, color: token("primary-ink"), align: "center", weight: "bold" }));
       },
     });
     if (res.activated && fresh()) later(() => set(!on));
@@ -758,7 +777,7 @@ function settingsPanel(w: number): void {
   para(T("Settings"), w, "h2", "settings-h");
   fieldset("set-audio", T("Audio"), w, (iw) => {
     para(T("Music, effects and mute, graphics quality, language, larger text, high contrast and reduced motion are in the StarHermit Options."), iw, "mini", "options-note");
-    button({ id: "btn-options", text: T("Open Options"), act: () => openMenu(), width: Math.min(iw, buttonWidth(T("Open Options"), "btn")) });
+    button({ id: "btn-options", text: T("Open Options"), act: () => __l10nOptions(), width: Math.min(iw, buttonWidth(T("Open Options"), "btn")) });
     toggleRow("set-captions", T("Captions for audio cues"), !!s.captions, iw, (v) => setSetting("captions", v));
   });
   fieldset("set-graphics", T("Graphics"), w, (iw) => {
@@ -833,7 +852,7 @@ function statGrid(id: string, list: [string, string | number][], w: number): voi
         for (let i = r * cols; i < Math.min(list.length, (r + 1) * cols); i++) {
           const [label, val] = list[i]!;
           ui.column(`${id}-${i}`, () => {
-            ui.style("stat-b").label(String(val));
+            ui.style(__l10nStyle("stat-b")).label(String(val));
             para(label, cw - 20, "mini");
           }, { style: "stat", width: cw, spacing: 2 });
         }
@@ -885,7 +904,7 @@ function leaderboardPanel(w: number, L: Layout): void {
   const widths = narrow ? [28, flexW, 70] : [34, flexW * 0.45, 92, flexW * 0.55, 70];
   const rowOf = (id: string, cells: [string, string][], cls: string): void => {
     ui.row(id, () => {
-      cells.forEach(([text, style], i) => ui.style(style, { width: widths[i]!, text: { overflow: "ellipsis", ...(i === cells.length - 1 ? { align: "end" as const } : {}) } }).label(text));
+      cells.forEach(([text, style], i) => ui.style(__l10nStyle(style), __l10nStyle({ width: widths[i]!, text: { overflow: "ellipsis", ...(i === cells.length - 1 ? { align: "end" as const } : {}) } })).label(text));
     }, { style: cls, width: w, spacing: 8, align: "center" });
   };
   ui.column("lb-table", () => {
@@ -905,10 +924,10 @@ function leaderboardPanel(w: number, L: Layout): void {
     para(T("Global board hosted by StarHermit — read-only. Your ranked runs submit to the game backend for replay verification."), w, "mini", "lb-platform-note");
     ui.column("lb-platform", () => {
       plat.forEach((e, i) => ui.row(`lbp-${i}`, () => {
-        ui.style("text", { width: 34 }).label(String(i + 1));
-        ui.style("text", { text: { overflow: "ellipsis" } }).label(e.name);
+        ui.style(__l10nStyle("text"), __l10nStyle({ width: 34 })).label(String(i + 1));
+        ui.style(__l10nStyle("text"), __l10nStyle({ text: { overflow: "ellipsis" } })).label(e.name);
         ui.spacer();
-        ui.style("num", { width: 80 }).label(String(e.score));
+        ui.style(__l10nStyle("num"), __l10nStyle({ width: 80 })).label(String(e.score));
       }, { style: "row-line", width: w, spacing: 8, align: "center" }));
     }, { spacing: 0, width: w });
   }

@@ -128,3 +128,11 @@ centred; narrower orders under 1024 px). The camera frames the board in the rect
 - The old build's moves popped the object at its source and showed it at the target at once (a sync-order bug);
   the port plays the intended fly animation.
 - Guests' progress from the old browser build (localStorage) does not carry over; cloud saves do.
+
+<!-- regional-localization:start -->
+
+### Regional interface languages
+
+The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `nl-NL`, `fi-FI`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `ta-SG`, `zh-HK`, `yue-HK`, `da-DE`, `eu-FR`, `oc-FR`, `sl-IT`, `oc-IT`, `ru-FI`, `eu-ES`, `ru-EE`, `su-ID`, `lb-BE`, `co-FR`, `ca-FR`, `fur-IT`, `ca-IT`, `ca-ES`, `gl-ES`, `bew-ID`, `km-VN`.
+
+<!-- regional-localization:end -->
