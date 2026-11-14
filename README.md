@@ -1,5 +1,7 @@
 # Shelf Shift
 
+**[▶ Play Shelf Shift on StarHermit](https://dashboard.starhermit.com/play/81daf0ae-691a-4949-9834-b4d468f16513)**
+
 A cozy boutique shelf-organizing puzzle. Move objects among shelf cells to form
 triples, clear requested orders, and keep the delivery counter from overflowing.
 A StarHermit engine script game (engine 1.24.0): played natively by the
