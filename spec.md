@@ -2,7 +2,7 @@
 
 Shelf Shift is a single-player shelf-organizing puzzle set in a warmly lit miniature boutique. The player moves
 objects between shelf cells and the front counter to form triples and fill customer orders while deliveries keep
-arriving. It is a StarHermit engine script game (engine 1.39.0, host API 1.39, `engine.minor=39`): one package,
+arriving. It is a StarHermit engine script game (engine 1.44.1, host API 1.44, `engine.minor=44`): one package,
 played natively by the StarHermit client and in browsers by the engine's web runtime.
 
 ## Rules (js/rules.js, unchanged)
@@ -136,3 +136,13 @@ centred; narrower orders under 1024 px). The camera frames the board in the rect
 The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `nl-NL`, `fi-FI`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `ta-SG`, `zh-HK`, `yue-HK`, `da-DE`, `eu-FR`, `oc-FR`, `sl-IT`, `oc-IT`, `ru-FI`, `eu-ES`, `ru-EE`, `su-ID`, `lb-BE`, `co-FR`, `ca-FR`, `fur-IT`, `ca-IT`, `ca-ES`, `gl-ES`, `bew-ID`, `km-VN`.
 
 <!-- regional-localization:end -->
+
+Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
+
+## Engine 1.44.1
+
+Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+
+The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Toasts use native engine stacking, styling, accessibility and lifetime management.

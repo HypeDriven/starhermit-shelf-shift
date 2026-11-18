@@ -142,14 +142,13 @@ function passivePill(id: string, L: Layout, text: string, cx: number, bottom: nu
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   const hud = hudOn();
   if (hud) hudLayer(L);
   else Object.assign(view, { x: 0, y: 0, width: f.width, height: f.height });
   if (app.screen) screenLayer(L);
-  toasts(L);
   if (app.focusNext) {
     const age = f.frame - app.openedFrame;
     if (age >= 1) ui.setFocus(app.focusNext);
@@ -418,12 +417,6 @@ function boardMirror(L: Layout, tray: Box): void {
   });
 }
 
-// ------------------------------------------------------------------ toasts
-function toasts(L: Layout): void {
-  const t = app.toasts[0];
-  if (!t) return;
-  passivePill("toast", L, t.text, L.lw / 2, L.lh - 90, Math.min(L.lw - 32, 520), "toast", token("primary-ink"), 16, 18, 8, "600");
-}
 
 // ------------------------------------------------------------------ screens
 /** Panels: .panel (560), .panel.wide (760); overlays (pause, results, settings, help) dim the round behind them. */
@@ -933,3 +926,10 @@ function leaderboardPanel(w: number, L: Layout): void {
   }
 }
 
+
+export function drawScreens(): void {
+  if (app.screen !== "help") { drawScreensImmediate(); return; }
+  const actions = ["left","right","up","down","confirm","cancel","undo","hint","pause","skip","camera"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
+}

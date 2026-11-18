@@ -86,8 +86,10 @@ function flushAnnouncements(): void {
   const text = spoken.splice(0).join(" ").slice(0, 500);
   try { ui.announce(text); } catch { /* busy */ }
 }
+let shownToast: ui.Toast | null = null;
 export function toast(text: string, ms = 2400): void {
-  app.toasts = [{ text, until: clockMs + ms }];
+  shownToast?.dismiss();
+  shownToast = ui.toast!(text, { duration: ms / 1000, position: "bottom", offset: 90, style: "toast", dismissible: false });
 }
 /** #hud-message: the pill under the board (ms 0: until replaced). */
 export function message(text: string, ms = 3200): void {

@@ -28,12 +28,9 @@
 // the HUD leaves uncovered with a view offset (render3d.js safeRect /
 // fitCamera).
 import {
-  ACESFilmicToneMapping, AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, ClampToEdgeWrapping, Color,
-  ConeGeometry, CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, LatheGeometry,
-  Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, PMREMGenerator,
-  ParticleEmitter, PointLight, Points, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, SRGBColorSpace,
-  OrthographicCamera, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
+  ACESFilmicToneMapping, AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, ClampToEdgeWrapping, Color, ConeGeometry, CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, LatheGeometry, Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, PMREMGenerator, PointLight, Points, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, SRGBColorSpace, OrthographicCamera, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
 import { Content, RNG, type Loc, type GameEvent, type State, type Theme } from "./classic.ts";
 import { DUST_MAX, type Look } from "./quality.ts";
@@ -324,12 +321,12 @@ function applyMaps(): void {
 
 // ---------- particle bursts (native emitters) ----------
 /** One emitter a colour and a throw: `color` is sampled for live particles too, so a shared emitter would recolour them. */
-const burstEmitters = new Map<string, ParticleEmitter>();
+const burstEmitters = new Map<string, GPUParticleEmitter>();
 function burstAt(p: Vector3, color: number, n: number, spread: number, up: number): void {
   const key = `${color}:${spread}:${up}`;
   let e = burstEmitters.get(key);
   if (!e) {
-    e = new ParticleEmitter({
+    e = new GPUParticleEmitter({
       capacity: 400, seed: burstEmitters.size + 1, color, life: [0.7, 1.1], material: burstMaterial(),
       velocity: [0, up / 2 + 0.8, 0], velocitySpread: [spread * 0.85, up / 2, spread * 0.42], gravity: [0, -4.5, 0],
     });
