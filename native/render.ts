@@ -1011,6 +1011,7 @@ export function applyLook(next: Look): void {
   renderer.post = next.grade ? GRADE : null;
   renderer.grade = null;
   renderer.antialias = next.antialias;
+  renderer.motionBlur = next.bloom !== null ? { intensity: 0.25, samples: 8, maxPixels: 16, targetFps: 60, camera: false } : null;
   dust.setCount(next.budget.dust);
   dust.points.visible = next.particles === "high";
   if (hadReflections !== next.reflections) applyEnv(litMats);

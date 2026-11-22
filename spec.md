@@ -2,7 +2,7 @@
 
 Shelf Shift is a single-player shelf-organizing puzzle set in a warmly lit miniature boutique. The player moves
 objects between shelf cells and the front counter to form triples and fill customer orders while deliveries keep
-arriving. It is a StarHermit engine script game (engine 1.44.1, host API 1.44, `engine.minor=44`): one package,
+arriving. It is a StarHermit engine script game (engine 1.47.0, host API 1.47, `engine.minor=47`): one package,
 played natively by the StarHermit client and in browsers by the engine's web runtime.
 
 ## Rules (js/rules.js, unchanged)
@@ -139,10 +139,14 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.44.1
+## Engine 1.47.0
 
-Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
 Toasts use native engine stacking, styling, accessibility and lifetime management.
+
+Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
+
+Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
