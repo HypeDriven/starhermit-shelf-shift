@@ -948,6 +948,14 @@ export function setCursor(loc: Loc | null): void {
 /** The cell under a window point: items first (they sit on cells), then the inlays. */
 export function pickLoc(x: number, y: number): { loc: Loc; item: boolean } | null {
   if (!curState) return null;
+  for (const key of cellMeshes.keys()) {
+    const loc = parseKey(key);
+    const r = cellScreenRect(loc);
+    if (r && x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height) {
+      const item = loc.area === "counter" ? curState.counter[loc.i!] : curState.shelves[loc.r!]![loc.c!];
+      return { loc, item: item !== null };
+    }
+  }
   pointerToNdc(x, y, ndc);
   raycaster.setFromCamera(ndc, camera);
   const itemHits = raycaster.intersectObjects(itemGroup.children, true);
