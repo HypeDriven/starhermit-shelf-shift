@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:01:07.389063+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-26T15:31:21.777551+00:00",
+    "coverArtUpdatedAt": "2026-11-26T22:19:06.434066+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-26T15:31:21.764888+00:00",
+      "deployedAt": "2026-11-26T22:19:06.418331+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.50.0",
+      "engineVersion": "1.51.0",
       "deployWarning": null
     },
     "description": "Rearrange objects on boutique shelves to form matching triples and complete customer orders.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-26T15:31:20.856Z",
-  "sourceCommit": "80ed29284c5651aa0d1f79e2fb07312223836612",
-  "bytesReceived": 1670997,
-  "archiveSha256": "ca18359778476305e17982d5b7c51cdf55bdbf15f2137ccb07c45650d327a383",
+  "publishedAt": "2026-11-26T22:19:06.809Z",
+  "sourceCommit": "aa106e755d8a79527f14caa4e8347a2a5a2c9de6",
+  "bytesReceived": 1670995,
+  "archiveSha256": "a3e2d8fa8ac5f4246e9b8be48d2f1a4879b31f7e115dce3594cd02791e5417b6",
   "indexSha256": "6ac502e606f549ca861f58b336892223d65eb68a649b120d0b91c01a8d2551ec",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 1670997,
+    "bytesReceived": 1670995,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.50.0",
+    "engineVersion": "1.51.0",
     "deployWarning": null
   },
   "liveVerification": {
